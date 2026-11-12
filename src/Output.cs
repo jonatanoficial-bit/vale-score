@@ -20,6 +20,7 @@ namespace ValeScore
             foreach (var staff in part.Staves)
             foreach (var note in staff)
             {
+                if (note.IsRest) continue;
                 int start = (int)Math.Round(note.Tick * tick);
                 int count = (int)Math.Round((note.Tick + note.Length) * tick) - start;
                 double pitch = 2 * Math.PI * 440 * Math.Pow(2, (note.Midi - 69) / 12.0) / SampleRate;
@@ -131,17 +132,26 @@ namespace ValeScore
                             int end = start + 16;
                             int cursor = start;
                             var lane = part.Staves[staff];
-                            var previous = lane.LastOrDefault(n => n.Tick < start);
-                            foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < end))
+                            var previous = lane.LastOrDefault(n => n.Tick < start && !n.IsRest);
+                            var events = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
+                            int groupStart = 0, groupEnd = 0;
+                            for (int i = 0; i < events.Length; i++)
                             {
+                                var note = events[i];
+                                if (i >= groupEnd)
+                                {
+                                    groupStart = i;
+                                    groupEnd = Score.BeamGroupEnd(events, i);
+                                }
                                 while (cursor < note.Tick)
                                 {
                                     int rest = Score.RestLength(cursor, note.Tick - cursor);
                                     WriteNote(xml, null, rest, staff, part.Staves.Count > 1);
                                     cursor += rest;
                                 }
-                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1, previous != null && previous.HyphenAfter);
-                                previous = note;
+                                string beam = groupEnd - groupStart < 2 ? null : i == groupStart ? "begin" : i == groupEnd - 1 ? "end" : "continue";
+                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1, previous != null && previous.HyphenAfter, beam);
+                                if (!note.IsRest) previous = note;
                                 cursor += note.Length;
                             }
                             while (cursor < end)
@@ -159,10 +169,15 @@ namespace ValeScore
             }
         }
 
-        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false)
+        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false, string beam = null)
         {
             xml.WriteStartElement("note");
-            if (note == null) xml.WriteElementString("rest", "");
+            if (note == null || note.IsRest)
+            {
+                xml.WriteStartElement("rest");
+                if (length == Score.BarTicks) xml.WriteAttributeString("measure", "yes");
+                xml.WriteEndElement();
+            }
             else
             {
                 xml.WriteStartElement("pitch");
@@ -175,7 +190,18 @@ namespace ValeScore
             xml.WriteElementString("voice", (staff + 1).ToString());
             xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, length)]);
             if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
-            if (note != null && note.Lyric != null)
+            if (beam != null)
+            {
+                int levels = length == 1 ? 2 : 1;
+                for (int number = 1; number <= levels; number++)
+                {
+                    xml.WriteStartElement("beam");
+                    xml.WriteAttributeString("number", number.ToString());
+                    xml.WriteString(beam);
+                    xml.WriteEndElement();
+                }
+            }
+            if (note != null && !note.IsRest && note.Lyric != null)
             {
                 xml.WriteStartElement("lyric");
                 xml.WriteAttributeString("number", "1");

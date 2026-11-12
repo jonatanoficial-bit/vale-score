@@ -20,7 +20,7 @@ namespace ValeScore
         private static readonly Color Teal = Color.FromArgb(15, 110, 91);
         private static readonly string[] Figures = { "Semibreve", "Mínima", "Semínima", "Colcheia", "Semicolcheia" };
         private static readonly Keys[] PitchKeys = { Keys.A, Keys.S, Keys.D, Keys.F, Keys.G, Keys.H, Keys.J };
-        private enum EditMode { Select, Write, Erase, Lyrics }
+        private enum EditMode { Select, Write, Rest, Erase, Lyrics }
         private readonly ScorePage sheet = new ScorePage();
         private readonly Panel surface = new Panel { AutoScroll = true, Dock = DockStyle.Fill, BackColor = Color.FromArgb(167, 177, 186) };
         private readonly FlowLayoutPanel tools = new FlowLayoutPanel();
@@ -29,8 +29,10 @@ namespace ValeScore
         private readonly Button undoButton, redoButton, playButton, previousButton, nextButton;
         private readonly Button editLyricButton, eraseNoteButton;
         private readonly List<Button> durationButtons = new List<Button>();
+        private readonly List<Button> restButtons = new List<Button>();
+        private readonly List<Button> accidentalButtons = new List<Button>();
         private readonly Dictionary<EditMode, Button> modeButtons = new Dictionary<EditMode, Button>();
-        private readonly ComboBox accidentals = new ComboBox();
+        private readonly ToolTip figureTips = new ToolTip();
         private readonly ComboBox zoom = new ComboBox();
         private readonly LyricEntry lyricEntry = new LyricEntry();
         private readonly Stack<byte[]> undo = new Stack<byte[]>(), redo = new Stack<byte[]>();
@@ -45,6 +47,7 @@ namespace ValeScore
         private string path;
         private byte[] saved;
         private int duration = 4;
+        private int inputAlter;
         private StaffPosition position = new StaffPosition { Step = 28 };
         private readonly List<StaffPosition> lanes = new List<StaffPosition>();
 
@@ -80,10 +83,10 @@ namespace ValeScore
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
             var help = new ToolStripMenuItem("Ajuda");
             Item(help, "Atalhos de edição", Keys.F1, () => MessageBox.Show(this,
-                "V: Selecionar. N: Escrever notas. E: Apagar. Esc: Voltar à seleção.\n" +
+                "V seleciona, N escreve notas, R escreve pausas e E apaga. Esc volta à seleção.\n" +
                 "Na pauta, use ← / → para navegar e ↑ / ↓ para mudar a altura.\n" +
                 "No modo Notas, A S D F G H J inserem Dó a Si. Enter insere a altura do cursor.\n" +
-                "1 a 5 escolhem a figura. Delete apaga a nota selecionada.\n" +
+                "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
@@ -144,7 +147,7 @@ namespace ValeScore
             selection.ForeColor = TextColor;
             sidebar.Controls.Add(selection);
             editLyricButton = Button("Editar letra", StartLyrics);
-            eraseNoteButton = Button("Apagar nota", RemoveNote);
+            eraseNoteButton = Button("Apagar seleção", RemoveNote);
             sidebar.Controls.Add(editLyricButton);
             sidebar.Controls.Add(eraseNoteButton);
 
@@ -152,39 +155,27 @@ namespace ValeScore
                 WrapContents = false, BackColor = Dark };
             AddMode(modes, EditMode.Select, "Selecionar", "V");
             AddMode(modes, EditMode.Write, "Notas", "N");
+            AddMode(modes, EditMode.Rest, "Pausas", "R");
             AddMode(modes, EditMode.Erase, "Apagar", "E");
             AddMode(modes, EditMode.Lyrics, "Letra", "Shift+L");
 
             tools.Dock = DockStyle.Top;
-            tools.Height = 42;
-            tools.Padding = new Padding(12, 3, 0, 0);
+            tools.Height = 62;
+            tools.Padding = new Padding(12, 0, 0, 0);
             tools.BackColor = PanelColor;
             tools.WrapContents = false;
-            for (int i = 0; i < Figures.Length; i++)
+            AddFigureGroup("FIGURAS", durationButtons, false);
+            AddFigureGroup("PAUSAS", restButtons, true);
+            var alterations = AddPaletteGroup("ALTERAÇÕES", 3);
+            string[] names = { "Bemol", "Bequadro", "Sustenido" };
+            for (int i = 0; i < names.Length; i++)
             {
-                int value = Score.Durations[i];
-                var button = Button(Figures[i], () => ChooseDuration(value));
-                durationButtons.Add(button);
-                tools.Controls.Add(button);
+                int alter = i - 1;
+                var button = new MusicButton((g, ink) => MusicGlyphs.Accidental(g, ink, 0, 0, alter));
+                AddMusicButton(alterations, button, names[i], () => ChooseAccidental(alter));
+                accidentalButtons.Add(button);
             }
-            accidentals.Width = 93;
-            accidentals.DropDownStyle = ComboBoxStyle.DropDownList;
-            accidentals.AccessibleName = "Alteração da nota";
-            accidentals.Items.AddRange(new object[] { "Bemol", "Natural", "Sustenido" });
-            accidentals.SelectedIndex = 1;
-            accidentals.Margin = new Padding(8, 5, 0, 0);
-            accidentals.SelectionChangeCommitted += delegate
-            {
-                int alter = accidentals.SelectedIndex - 1;
-                if (!CommitLyric()) return;
-                if (mode != EditMode.Write)
-                {
-                    var note = SelectedNote();
-                    if (note != null) Put(note.Step, note.Length, alter);
-                }
-                FocusWorkspace();
-            };
-            tools.Controls.Add(accidentals);
+            Disposed += delegate { figureTips.Dispose(); };
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
             previousButton = Button("‹", () => MovePage(-1));
@@ -309,20 +300,74 @@ namespace ValeScore
             panel.Controls.Add(button);
         }
 
+        private FlowLayoutPanel AddPaletteGroup(string title, int count)
+        {
+            var group = new Panel { Width = count * 35, Height = 59, Margin = new Padding(0, 0, 13, 0) };
+            group.Controls.Add(new Label { Text = title, Location = new Point(1, 2), AutoSize = true,
+                ForeColor = Muted, Font = new Font("Segoe UI Semibold", 8) });
+            var row = new FlowLayoutPanel { Location = new Point(0, 17), Width = group.Width, Height = 41, WrapContents = false };
+            group.Controls.Add(row);
+            tools.Controls.Add(group);
+            return row;
+        }
+
+        private void AddMusicButton(FlowLayoutPanel row, MusicButton button, string label, Action action)
+        {
+            button.AccessibleName = label;
+            button.BackColor = PanelColor;
+            button.ForeColor = TextColor;
+            button.FlatAppearance.BorderColor = Color.FromArgb(61, 78, 94);
+            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(48, 65, 80);
+            figureTips.SetToolTip(button, label);
+            button.Click += delegate { action(); FocusWorkspace(); };
+            row.Controls.Add(button);
+        }
+
+        private void AddFigureGroup(string title, List<Button> buttons, bool rest)
+        {
+            var row = AddPaletteGroup(title, Figures.Length);
+            for (int i = 0; i < Figures.Length; i++)
+            {
+                int length = Score.Durations[i];
+                var button = MusicButton.Figure(length, rest);
+                string label = rest ? "Pausa de " + Figures[i].ToLowerInvariant() : Figures[i];
+                AddMusicButton(row, button, label, () => ChooseDuration(length, rest));
+                buttons.Add(button);
+            }
+        }
+
+        private void ChooseAccidental(int alter)
+        {
+            if (!CommitLyric()) return;
+            var note = SelectedNote();
+            if (mode == EditMode.Select && note != null)
+            {
+                Put(note.Step, note.Length, alter);
+            }
+            else
+            {
+                inputAlter = alter;
+                if (mode != EditMode.Write) SetMode(EditMode.Write);
+            }
+            ShowDuration();
+        }
+
         private void SetMode(EditMode value)
         {
             if (!CommitLyric()) return;
             mode = value;
             foreach (var item in modeButtons)
                 item.Value.BackColor = item.Key == value ? Teal : PanelColor;
-            sheet.ShowEntryPreview = mode == EditMode.Write;
-            sheet.Cursor = mode == EditMode.Write ? Cursors.Cross : mode == EditMode.Lyrics ? Cursors.IBeam : Cursors.Default;
+            sheet.ShowEntryPreview = mode == EditMode.Write || mode == EditMode.Rest;
+            sheet.PreviewRest = mode == EditMode.Rest;
+            sheet.Cursor = sheet.ShowEntryPreview ? Cursors.Cross : mode == EditMode.Lyrics ? Cursors.IBeam : Cursors.Default;
             sheet.Hover = null;
             sheet.Invalidate();
             string[] hints = {
                 "Selecione uma nota. Use ↑ e ↓ para mudar a altura, ou Delete para apagar.",
                 "Escolha a figura e clique na pauta. Use as setas para mover o cursor.",
-                "Clique sobre a nota que deseja apagar. Ctrl+Z desfaz.",
+                "Escolha uma pausa e clique na posição desejada. Enter insere no cursor.",
+                "Clique na nota ou pausa que deseja apagar. Ctrl+Z desfaz.",
                 "Clique numa nota para escrever a letra. Espaço avança por palavra e hífen por sílaba."
             };
             modeHint.Text = hints[(int)value];
@@ -332,6 +377,8 @@ namespace ValeScore
         private void PickPosition(StaffPosition pick, MouseButtons button)
         {
             if (!CommitLyric()) return;
+            if (button == MouseButtons.Left && duration == Score.BarTicks && (mode == EditMode.Rest || mode == EditMode.Write))
+                pick.Tick -= pick.Tick % Score.BarTicks;
             position = pick;
             var note = SelectedNote();
             if (button == MouseButtons.Right || mode == EditMode.Select)
@@ -339,7 +386,6 @@ namespace ValeScore
                 if (note != null)
                 {
                     position.Step = note.Step;
-                    accidentals.SelectedIndex = note.Alter + 1;
                 }
                 RefreshView();
             }
@@ -347,10 +393,14 @@ namespace ValeScore
             {
                 Put(pick.Step, duration);
             }
+            else if (mode == EditMode.Rest)
+            {
+                PutRest(duration);
+            }
             else if (mode == EditMode.Erase)
             {
                 if (pick.HitNote) RemoveNote();
-                else { RefreshView(); Report("Clique sobre a cabeça da nota para apagar."); }
+                else { RefreshView(); Report("Clique sobre uma nota ou pausa para apagar."); }
             }
             else
             {
@@ -363,10 +413,10 @@ namespace ValeScore
         private void RemoveNote()
         {
             if (!CommitLyric()) return;
-            var note = SelectedNote();
+            var note = SelectedEvent();
             if (note == null) return;
             if (Change(() => score.Parts[position.Part].Staves[position.Staff].Remove(note)))
-                Report("Nota apagada");
+                Report(note.IsRest ? "Pausa apagada" : "Nota apagada");
         }
 
         private void StartLyrics()
@@ -449,11 +499,13 @@ namespace ValeScore
         private bool MoveToAdjacentNote(int direction)
         {
             var lane = score.Parts[position.Part].Staves[position.Staff];
-            var note = direction > 0 ? lane.Find(n => n.Tick > position.Tick) : lane.FindLast(n => n.Tick < position.Tick);
+            bool pitchedOnly = mode == EditMode.Lyrics;
+            var note = direction > 0
+                ? lane.Find(n => n.Tick > position.Tick && (!pitchedOnly || !n.IsRest))
+                : lane.FindLast(n => n.Tick < position.Tick && (!pitchedOnly || !n.IsRest));
             if (note == null) return false;
             position.Tick = note.Tick;
-            position.Step = note.Step;
-            accidentals.SelectedIndex = note.Alter + 1;
+            if (!note.IsRest) position.Step = note.Step;
             RefreshView();
             RevealCursor();
             return true;
@@ -561,22 +613,31 @@ namespace ValeScore
             tracks.SelectedIndex = lanes.FindIndex(l => l.Part == position.Part && l.Staff == position.Staff);
             tracks.EndUpdate();
             syncingTracks = false;
-            var note = SelectedNote();
+            var selected = SelectedEvent();
+            var note = selected != null && !selected.IsRest ? selected : null;
             int step = note == null ? position.Step : note.Step;
             string altered = note == null || note.Alter == 0 ? "" : note.Alter > 0 ? "♯" : "♭";
             selection.Text = "Compasso " + (position.Tick / 16 + 1) + "  ·  " + (position.Tick % 16 + 1) + "/16\n"
-                + Score.Names[step % 7] + altered + (step / 7) + (note == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, note.Length)])
+                + (selected != null && selected.IsRest ? "Pausa" : Score.Names[step % 7] + altered + (step / 7))
+                + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, selected.Length)])
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
             Text = score.Title + (Dirty() ? " *" : "") + " — Vale Score";
             undoButton.Enabled = undo.Count > 0;
             redoButton.Enabled = redo.Count > 0;
-            editLyricButton.Enabled = eraseNoteButton.Enabled = note != null;
+            editLyricButton.Enabled = note != null;
+            eraseNoteButton.Enabled = selected != null;
             ChangePage(sheet.Engraving.PageOf(position.Tick));
             ShowDuration();
             PlaceLyricEntry();
         }
 
         private Note SelectedNote()
+        {
+            var note = SelectedEvent();
+            return note != null && !note.IsRest ? note : null;
+        }
+
+        private Note SelectedEvent()
         {
             return score.Parts[position.Part].Staves[position.Staff].Find(n => n.Tick == position.Tick);
         }
@@ -629,22 +690,36 @@ namespace ValeScore
 
         private void ShowDuration()
         {
-            var note = SelectedNote();
-            int active = mode == EditMode.Select && note != null ? note.Length : duration;
+            var selected = SelectedEvent();
+            bool showingSelection = mode == EditMode.Select && selected != null;
+            int active = showingSelection ? selected.Length : duration;
+            bool rest = showingSelection ? selected.IsRest : mode == EditMode.Rest;
             for (int i = 0; i < durationButtons.Count; i++)
-                durationButtons[i].BackColor = Score.Durations[i] == active ? Teal : PanelColor;
+            {
+                bool same = Score.Durations[i] == active;
+                durationButtons[i].BackColor = !rest && same ? Teal : PanelColor;
+                restButtons[i].BackColor = rest && same ? Teal : PanelColor;
+            }
+            int accidental = showingSelection && !selected.IsRest ? selected.Alter : inputAlter;
+            for (int i = 0; i < accidentalButtons.Count; i++)
+                accidentalButtons[i].BackColor = !rest && i == accidental + 1 ? Teal : PanelColor;
+            sheet.PreviewLength = duration;
+            sheet.PreviewAlter = inputAlter;
+            sheet.Invalidate();
         }
 
-        private void ChooseDuration(int value)
+        private void ChooseDuration(int value, bool rest)
         {
             if (!CommitLyric()) return;
-            var note = SelectedNote();
-            if (mode == EditMode.Select && note != null)
+            var selected = SelectedEvent();
+            if (mode == EditMode.Select && selected != null && selected.IsRest == rest)
             {
-                Put(note.Step, value, note.Alter);
+                if (rest) PutRest(value);
+                else Put(selected.Step, value, selected.Alter);
                 return;
             }
-            if (mode != EditMode.Write) SetMode(EditMode.Write);
+            var tool = rest ? EditMode.Rest : EditMode.Write;
+            if (mode != tool) SetMode(tool);
             SetDuration(value);
         }
 
@@ -653,22 +728,24 @@ namespace ValeScore
             int min = position.Staff == 0 ? 25 : 13;
             if (step < min || step > min + 18) { Report("Altura fora da extensão editável da pauta."); RefreshView(); return false; }
             position.Step = step;
-            return Change(() => score.Put(position.Part, position.Staff, position.Tick, length, step, alteration ?? (accidentals.SelectedIndex - 1)));
+            return Change(() => score.Put(position.Part, position.Staff, position.Tick, length, step, alteration ?? inputAlter));
         }
 
-        private void InsertWithKeyboard(int step)
+        private bool PutRest(int length)
         {
-            if (Put(step, duration))
+            return Change(() => score.PutRest(position.Part, position.Staff, position.Tick, length));
+        }
+
+        private void AdvanceInput()
+        {
+            int next = position.Tick + duration;
+            if (next < score.Bars * Score.BarTicks)
             {
-                int next = position.Tick + duration;
-                if (next < score.Bars * Score.BarTicks)
-                {
-                    position.Tick = next;
-                    RefreshView();
-                    RevealCursor();
-                }
-                else Report("Fim da partitura. Adicione um compasso para continuar.");
+                position.Tick = next;
+                RefreshView();
+                RevealCursor();
             }
+            else Report("Fim da partitura. Adicione um compasso para continuar.");
         }
 
         private void AddBar()
@@ -686,16 +763,23 @@ namespace ValeScore
             if (key == Keys.Space) { Play(); return true; }
             if (key == Keys.V || key == Keys.Escape) { SetMode(EditMode.Select); return true; }
             if (key == Keys.N) { SetMode(EditMode.Write); return true; }
+            if (key == Keys.R) { SetMode(EditMode.Rest); return true; }
             if (key == Keys.E) { SetMode(EditMode.Erase); return true; }
-            if (key >= Keys.D1 && key <= Keys.D5) { ChooseDuration(Score.Durations[key - Keys.D1]); return true; }
+            if (key >= Keys.D1 && key <= Keys.D5)
+            {
+                var selected = SelectedEvent();
+                bool rest = mode == EditMode.Rest || (mode == EditMode.Select && selected != null && selected.IsRest);
+                ChooseDuration(Score.Durations[key - Keys.D1], rest);
+                return true;
+            }
             if (key == Keys.Delete) { RemoveNote(); return true; }
             if (key == Keys.Left || key == Keys.Right)
             {
                 int direction = key == Keys.Right ? 1 : -1;
-                if (mode != EditMode.Write && MoveToAdjacentNote(direction)) return true;
+                if (mode != EditMode.Write && mode != EditMode.Rest && MoveToAdjacentNote(direction)) return true;
                 position.Tick = Math.Max(0, Math.Min(score.Bars * 16 - 1, position.Tick + direction));
                 var note = SelectedNote();
-                if (note != null) { position.Step = note.Step; accidentals.SelectedIndex = note.Alter + 1; }
+                if (note != null) position.Step = note.Step;
                 RefreshView();
                 RevealCursor();
                 return true;
@@ -712,10 +796,23 @@ namespace ValeScore
                 }
                 return true;
             }
+            if (key == Keys.Enter && mode == EditMode.Rest)
+            {
+                if (PutRest(duration)) AdvanceInput();
+                return true;
+            }
             if (mode != EditMode.Write) return base.ProcessCmdKey(ref msg, key);
-            if (key == Keys.Enter) { InsertWithKeyboard(position.Step); return true; }
+            if (key == Keys.Enter)
+            {
+                if (Put(position.Step, duration)) AdvanceInput();
+                return true;
+            }
             int degree = Array.IndexOf(PitchKeys, key);
-            if (degree >= 0) { InsertWithKeyboard(position.Step / 7 * 7 + degree); return true; }
+            if (degree >= 0)
+            {
+                if (Put(position.Step / 7 * 7 + degree, duration)) AdvanceInput();
+                return true;
+            }
             return base.ProcessCmdKey(ref msg, key);
         }
 
@@ -737,7 +834,7 @@ namespace ValeScore
             undo.Clear();
             redo.Clear();
             position = new StaffPosition { Step = 28 };
-            accidentals.SelectedIndex = 1;
+            inputAlter = 0;
             RefreshView(true);
             SetMode(score.Parts.SelectMany(part => part.Staves).All(staff => staff.Count == 0) ? EditMode.Write : EditMode.Select);
             surface.AutoScrollPosition = Point.Empty;

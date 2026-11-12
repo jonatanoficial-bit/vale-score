@@ -99,15 +99,22 @@ namespace ValeScore
         {
             int start = bar * Score.BarTicks;
             var halfWidths = new float[Score.BarTicks];
+            var alterations = new bool[Score.BarTicks];
             var links = new List<Tuple<int, float>>[Score.BarTicks];
             foreach (var lane in lanes)
             {
                 Note previous = null;
                 float previousWidth = 0;
+                var accidentals = new Dictionary<int, int>();
                 foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + Score.BarTicks))
                 {
-                    if (note.Lyric == null) continue;
+                    if (note.IsRest) continue;
                     int unit = note.Tick - start;
+                    int alter;
+                    accidentals.TryGetValue(note.Step, out alter);
+                    if (note.Alter != alter) alterations[unit] = true;
+                    accidentals[note.Step] = note.Alter;
+                    if (note.Lyric == null) continue;
                     float half = WidthOf(note.Lyric) / 2f;
                     halfWidths[unit] = Math.Max(halfWidths[unit], half);
                     if (previous != null)
@@ -124,7 +131,8 @@ namespace ValeScore
             float end = 0;
             for (int unit = 0; unit < offsets.Length; unit++)
             {
-                float left = unit == 0 ? 19 : offsets[unit - 1] + 10;
+                float gap = alterations[unit] ? 22 : 11.2f;
+                float left = unit == 0 ? Math.Max(19, gap) : offsets[unit - 1] + gap;
                 left = Math.Max(left, halfWidths[unit] + 8);
                 if (links[unit] != null)
                     foreach (var link in links[unit])

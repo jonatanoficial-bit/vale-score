@@ -17,6 +17,7 @@ namespace ValeScore
         [DataMember] public int Alter;
         [DataMember(EmitDefaultValue = false)] public string Lyric;
         [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
+        [DataMember(EmitDefaultValue = false)] public bool IsRest;
 
         public int Midi
         {
@@ -37,7 +38,7 @@ namespace ValeScore
     {
         public const int BarTicks = 16;
         public const int MaxBars = 64;
-        public const int CurrentVersion = 2;
+        public const int CurrentVersion = 3;
         public const int MaxLyricLength = 24;
         public static readonly int[] Durations = { 16, 8, 4, 2, 1 };
         public static readonly string[] Steps = { "C", "D", "E", "F", "G", "A", "B" };
@@ -68,6 +69,10 @@ namespace ValeScore
             int[] joins = { 1, 3, 5, 13 };
             for (int i = 0; i < lyrics.Length; i++)
                 score.SetLyric(0, 0, i * 4, lyrics[i], joins.Contains(i));
+            score.Put(0, 0, 40, 2, melody[10], 0);
+            score.Put(0, 0, 42, 2, 36, 0);
+            score.Put(0, 1, 40, 4, bass[5], 0);
+            score.PutRest(0, 1, 44, 4);
             return score;
         }
 
@@ -84,18 +89,32 @@ namespace ValeScore
 
         public void Put(int part, int staff, int tick, int length, int step, int alter)
         {
-            var note = new Note { Tick = tick, Length = length, Step = step, Alter = alter };
-            if (!ValidNote(note) || tick + length > Bars * BarTicks)
-                throw new InvalidOperationException("A nota precisa caber no compasso e na extensão da pauta.");
+            PutEvent(part, staff, new Note { Tick = tick, Length = length, Step = step, Alter = alter });
+        }
+
+        public void PutRest(int part, int staff, int tick, int length)
+        {
+            PutEvent(part, staff, new Note { Tick = tick, Length = length, IsRest = true });
+        }
+
+        private void PutEvent(int part, int staff, Note note)
+        {
+            int tick = note.Tick;
+            int length = note.Length;
+            if (!ValidNote(note) || tick >= Bars * BarTicks)
+                throw new InvalidOperationException("A figura precisa caber no compasso e na extensão da pauta.");
             var notes = Parts[part].Staves[staff];
             var previous = notes.FirstOrDefault(n => n.Tick == tick);
             if (notes.Any(n => n != previous && n.Tick < tick + length && tick < n.Tick + n.Length))
-                throw new InvalidOperationException("A nota se sobrepõe a outra nesta pauta.");
+                throw new InvalidOperationException("A figura se sobrepõe a outra nesta pauta.");
             if (previous != null)
             {
                 note.Id = previous.Id;
-                note.Lyric = previous.Lyric;
-                note.HyphenAfter = previous.HyphenAfter;
+                if (!note.IsRest)
+                {
+                    note.Lyric = previous.Lyric;
+                    note.HyphenAfter = previous.HyphenAfter;
+                }
                 notes.Remove(previous);
             }
             notes.Add(note);
@@ -105,7 +124,7 @@ namespace ValeScore
         public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter)
         {
             var note = Parts[part].Staves[staff].Find(n => n.Tick == tick);
-            if (note == null) throw new InvalidOperationException("Selecione uma nota para escrever a letra.");
+            if (note == null || note.IsRest) throw new InvalidOperationException("Selecione uma nota para escrever a letra.");
             string lyric = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
             if (!ValidLyric(lyric))
                 throw new InvalidOperationException("Use até 24 caracteres por nota. Espaço e hífen avançam na partitura.");
@@ -124,14 +143,31 @@ namespace ValeScore
 
         private static bool ValidNote(Note n)
         {
-            return n != null && n.Id != Guid.Empty && n.Tick >= 0 && n.Step >= 0 && n.Step <= 69 &&
-                n.Alter >= -1 && n.Alter <= 1 && n.Midi >= 0 && n.Midi <= 127 &&
-                Durations.Contains(n.Length) && n.Tick % BarTicks + n.Length <= BarTicks;
+            if (n == null || n.Id == Guid.Empty || n.Tick < 0 ||
+                !Durations.Contains(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
+            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter;
+            return n.Step >= 0 && n.Step <= 69 && n.Alter >= -1 && n.Alter <= 1 && n.Midi >= 0 && n.Midi <= 127;
         }
 
         public static int RestLength(int tick, int remaining)
         {
             return Durations.First(d => d <= remaining && tick % d == 0);
+        }
+
+        public static int BeamGroupEnd(IList<Note> events, int index)
+        {
+            var first = events[index];
+            int end = index + 1;
+            if (first.IsRest || first.Length > 2) return end;
+            int beatEnd = (first.Tick / 4 + 1) * 4;
+            while (end < events.Count)
+            {
+                var next = events[end];
+                if (next.IsRest || next.Length != first.Length || next.Tick + next.Length > beatEnd ||
+                    next.Tick != events[end - 1].Tick + first.Length) break;
+                end++;
+            }
+            return end;
         }
 
         public void Validate()
@@ -183,7 +219,7 @@ namespace ValeScore
                 {
                     var score = (Score)Serializer.ReadObject(stream);
                     if (score == null) throw new InvalidDataException("Projeto vazio.");
-                    if (score.Version == 1) score.Version = CurrentVersion;
+                    if (score.Version == 1 || score.Version == 2) score.Version = CurrentVersion;
                     score.Validate();
                     return score;
                 }

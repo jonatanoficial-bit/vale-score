@@ -49,8 +49,18 @@ internal static class Smoke
         legacy.Version = 1;
         legacy.Put(0, 1, 0, 4, 21, 0);
         var migrated = Score.Restore(legacy.Snapshot());
-        Assert(migrated.Version == 2 && migrated.Parts[0].Staves[1][0].Id == legacy.Parts[0].Staves[1][0].Id &&
+        Assert(migrated.Version == Score.CurrentVersion && migrated.Parts[0].Staves[1][0].Id == legacy.Parts[0].Staves[1][0].Id &&
             migrated.Parts[0].Staves[1][0].Lyric == null, "Projetos v1 abrem no novo esquema");
+        legacy.SetLyric(0, 1, 0, "céu", false);
+        legacy.Version = 2;
+        Assert(Score.Restore(legacy.Snapshot()).Parts[0].Staves[1][0].Lyric == "céu", "Projetos v2 preservam a letra na migração");
+        var rests = Score.New(false);
+        rests.PutRest(0, 0, 0, 4);
+        rests.PutRest(0, 0, 4, 4);
+        var restoredRests = Score.Restore(rests.Snapshot()).Parts[0].Staves[0];
+        Assert(restoredRests.Count == 2 && restoredRests.All(n => n.IsRest && n.Length == 4), "Pausas explícitas conservam figuras separadas no projeto");
+        using (var silent = Output.Wave(rests))
+            Assert(silent.ToArray().Skip(44).All(b => b == 0), "Pausas explícitas geram silêncio");
         score.SetLyric(0, 0, 0, "céu&mar", false);
         score.SetLyric(0, 0, 12, "nas", true);
         score.SetLyric(0, 0, 16, "céu", false);
@@ -77,7 +87,18 @@ internal static class Smoke
                 "MusicXML preserva texto, acentos e caracteres XML");
             Assert(lyrics.Select(l => (string)l.Element("syllabic")).SequenceEqual(new[] { "single", "begin", "end", "begin", "end" }),
                 "MusicXML preserva palavras e sílabas inclusive entre compassos");
+            Assert(xml.Descendants("beam").Select(b => b.Value).SequenceEqual(new[] { "begin", "end" }),
+                "Colcheias no mesmo tempo recebem barra de união no MusicXML");
             xml.Save(Path.Combine(directory, "exemplo.musicxml"));
+        }
+        using (var buffer = new MemoryStream())
+        {
+            Output.MusicXml(rests, buffer);
+            buffer.Position = 0;
+            var written = XDocument.Load(buffer).Descendants("measure").First().Elements("note").Take(3).ToArray();
+            Assert(written.All(n => n.Element("rest") != null) &&
+                written.Select(n => (int)n.Element("duration")).SequenceEqual(new[] { 4, 4, 8 }),
+                "MusicXML distingue pausas escolhidas e completa a duração do compasso");
         }
         using (var wave = Output.Wave(score))
         {
@@ -123,6 +144,20 @@ internal static class Smoke
             var edit = type.GetMethod("ProcessCmdKey", flags);
             var undo = type.GetField("undoButton", flags);
             var redo = type.GetField("redoButton", flags);
+            var noteButtons = (System.Collections.Generic.List<Button>)type.GetField("durationButtons", flags).GetValue(editor);
+            var pauseButtons = (System.Collections.Generic.List<Button>)type.GetField("restButtons", flags).GetValue(editor);
+            var signs = (System.Collections.Generic.List<Button>)type.GetField("accidentalButtons", flags).GetValue(editor);
+            Assert(noteButtons.Count == 5 && pauseButtons.Count == 5 && signs.Count == 3 &&
+                noteButtons.Concat(pauseButtons).Concat(signs).All(b => b.Text.Length == 0 && !string.IsNullOrWhiteSpace(b.AccessibleName)),
+                "Paleta tem 13 símbolos com nomes acessíveis");
+            using (var whole = new Bitmap(pauseButtons[0].Width, pauseButtons[0].Height))
+            using (var half = new Bitmap(pauseButtons[1].Width, pauseButtons[1].Height))
+            {
+                pauseButtons[0].DrawToBitmap(whole, new Rectangle(Point.Empty, whole.Size));
+                pauseButtons[1].DrawToBitmap(half, new Rectangle(Point.Empty, half.Size));
+                Assert(Enumerable.Range(9, 14).Any(y => whole.GetPixel(whole.Width / 2, y) != half.GetPixel(half.Width / 2, y)),
+                    "Pausas de semibreve e mínima têm desenhos diferentes");
+            }
             var sheet = (ScorePage)type.GetField("sheet", flags).GetValue(editor);
             var entry = (TextBox)type.GetField("lyricEntry", flags).GetValue(editor);
             var lyricKey = entry.GetType().GetMethod("ProcessCmdKey", flags);
@@ -138,6 +173,9 @@ internal static class Smoke
             Assert(((Score)model.GetValue(editor)).Parts[0].Staves[0][0].Step == original, "Botão Desfazer restaura a nota");
             ((Button)redo.GetValue(editor)).PerformClick();
             Assert(((Score)model.GetValue(editor)).Parts[0].Staves[0][0].Step == original + 1, "Botão Refazer reaplica a edição");
+            ((Button)undo.GetValue(editor)).PerformClick();
+            signs[2].PerformClick();
+            Assert(first().Alter == 1, "Botão de sustenido altera a nota selecionada");
             ((Button)undo.GetValue(editor)).PerformClick();
 
             key(Keys.Shift | Keys.L);
@@ -186,6 +224,21 @@ internal static class Smoke
             Assert(first() != null && first().Length == 2, "Desfazer recupera a nota apagada");
             key(Keys.Delete);
             Assert(first() == null, "Delete apaga a nota selecionada");
+            pauseButtons[2].PerformClick();
+            click(notePoint);
+            Assert(first().IsRest && first().Length == 4, "Paleta insere pausa de semínima com o mouse");
+            key(Keys.Shift | Keys.L);
+            Assert(!entry.Visible, "Uma pausa não abre o editor de letra");
+            pauseButtons[0].PerformClick();
+            var secondBar = sheet.Engraving.MeasureOf(1);
+            click(new Point((int)((secondBar.Left + secondBar.Width / 2) * sheet.Zoom),
+                (int)((ScoreLayout.FirstStaffTop + 12) * sheet.Zoom)));
+            Assert(sheet.Music.Parts[0].Staves[0].Any(n => n.Tick == 16 && n.IsRest && n.Length == 16),
+                "Clique no centro do compasso insere pausa de semibreve no início");
+            key(Keys.E);
+            click(new Point((int)((secondBar.Left + secondBar.Width / 2) * sheet.Zoom),
+                (int)((ScoreLayout.FirstStaffTop + 12) * sheet.Zoom)));
+            Assert(!sheet.Music.Parts[0].Staves[0].Any(n => n.Tick == 16), "Borracha encontra a pausa centralizada");
             type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(true), null });
             editor.Close();
         }

@@ -1,13 +1,15 @@
 # Vale Score
 
-**0.2.0 · Prévia para Windows x64**
+**0.3.0 · Prévia para Windows x64**
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.2.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.2.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.3.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.3.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
-- **Escrever.** Pressione **N** ou escolha **Notas**, selecione uma figura e clique na pauta. No teclado, **A S D F G H J** inserem Dó a Si. As teclas **1–5** selecionam a figura.
-- **Editar.** Em **Selecionar** (**V**), clique na nota. As setas **↑** e **↓** mudam a altura e a barra de figuras muda a duração. Use **Delete** ou o modo **Apagar** (**E**) para remover uma nota e deixar uma pausa.
+- **Escrever.** Escolha a figura na paleta e clique na pauta. Passe o mouse pelo símbolo para ver o nome. No modo **Notas** (**N**), **A S D F G H J** inserem Dó a Si. As teclas **1–5** selecionam a figura da ferramenta ativa.
+- **Inserir pausas.** Clique no símbolo da pausa desejada ou use **R** e escolha a duração. Clique na pauta ou use **Enter** para inserir no cursor. A duração escolhida é salva e exportada.
+- **Editar.** Em **Selecionar** (**V**), clique numa nota ou pausa. A paleta muda a duração da figura selecionada. Em notas, **↑** e **↓** mudam a altura e **♭**, **♮** e **♯** alteram o acidente. Use **Delete** ou **Apagar** (**E**) para retirar a figura.
+- **Ler a partitura.** Colcheias ou semicolcheias consecutivas de mesma duração são ligadas dentro do tempo. As barras de compasso unem as duas pautas do piano.
 - **Colocar letra.** Selecione uma nota e pressione **Shift+L**. Digite sob a pauta. **Espaço** encerra a palavra e **hífen** separa sílabas. Ambos avançam para a próxima nota na mesma pauta. **Enter** confirma, **Esc** cancela o texto atual e **Shift+Tab** volta à nota anterior.
 - **Navegar.** Use o zoom e as setas de página na barra inferior. **F1** abre a lista de atalhos.
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
@@ -28,4 +30,4 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `2`. A versão 0.2 abre projetos do esquema 1 e converte para o esquema 2 ao salvar. Cada instrumento contém uma ou duas listas de notas, uma por pauta. Cada nota possui ID, posição e duração em semicolcheias, grau diatônico inteiro (Dó4 = 28), alteração em semitons, texto opcional e indicação de hífen. Intervalos vazios geram pausas.
+JSON UTF-8, versão de esquema `3`. A versão 0.3 abre projetos dos esquemas 1 e 2 e grava no esquema 3. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.

@@ -25,6 +25,8 @@ namespace ValeScore
         public int Playing = -1;
         public StaffPosition Selection, Hover;
         public bool ShowEntryPreview;
+        public bool PreviewRest;
+        public int PreviewLength = 4, PreviewAlter;
         public Action<StaffPosition, MouseButtons> Pick;
         public float Zoom { get; private set; }
 
@@ -61,7 +63,8 @@ namespace ValeScore
         {
             if (Engraving == null) return;
             e.Graphics.ScaleTransform(Zoom, Zoom);
-            Draw(e.Graphics, Music, Engraving, Page, Selection, Playing, ShowEntryPreview ? Hover : null);
+            Draw(e.Graphics, Music, Engraving, Page, Selection, Playing, ShowEntryPreview ? Hover : null,
+                PreviewLength, PreviewRest, PreviewAlter);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -111,9 +114,9 @@ namespace ValeScore
                     var lane = Music.Parts[part].Staves[staff];
                     bool lyricRow = y >= top + ScoreLayout.LyricY - 2;
                     var note = lane.Where(n => n.Tick >= start && n.Tick < start + Score.BarTicks &&
-                        (lyricRow ? n.Lyric != null : Math.Abs(y - (top + 40 - (n.Step - BottomStep(staff)) * 5)) < 11))
-                        .OrderBy(n => Math.Abs(measure.At(n.Tick - start) - x)).FirstOrDefault();
-                    if (note != null && Math.Abs(measure.At(note.Tick - start) - x) <= (lyricRow ? 24 : 8))
+                        (lyricRow ? n.Lyric != null : Math.Abs(y - (n.IsRest ? RestY(top, n.Length) : NoteY(top, staff, n))) < (n.IsRest ? 15 : 11)))
+                        .OrderBy(n => Math.Abs(EventX(measure, n) - x)).FirstOrDefault();
+                    if (note != null && Math.Abs(EventX(measure, note) - x) <= (lyricRow ? 24 : 8))
                         return new StaffPosition { Part = part, Staff = staff, Tick = note.Tick, Step = step, HitNote = true };
                     return new StaffPosition { Part = part, Staff = staff, Tick = tick, Step = step };
                 }
@@ -123,18 +126,26 @@ namespace ValeScore
         }
 
         private static int BottomStep(int staff) { return staff == 0 ? 30 : 18; }
+        private static float NoteY(int top, int staff, Note note) { return top + 40 - (note.Step - BottomStep(staff)) * 5; }
+        private static float RestY(int top, int length) { return top + (length == 16 ? 12 : length == 8 ? 18 : 20); }
+        private static float EventX(ScoreLayout.Measure measure, Note note)
+        {
+            return note.IsRest && note.Length == Score.BarTicks ? measure.Left + measure.Width / 2 : measure.At(note.Tick % Score.BarTicks);
+        }
 
         public static void Draw(Graphics g, Score score, int page, StaffPosition selected, int playing)
         {
             Draw(g, score, new ScoreLayout(score), page, selected, playing, null);
         }
 
-        public static void Draw(Graphics g, Score score, ScoreLayout layout, int page, StaffPosition selected, int playing, StaffPosition hover)
+        public static void Draw(Graphics g, Score score, ScoreLayout layout, int page, StaffPosition selected, int playing, StaffPosition hover,
+            int previewLength = 4, bool previewRest = false, int previewAlter = 0)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
             using (var ink = new SolidBrush(Ink))
             using (var line = new Pen(Ink, 1.02f))
+            using (var staffLine = new Pen(Color.FromArgb(59, 65, 71), 0.86f))
             using (var accent = new SolidBrush(Accent))
             using (var ghost = new SolidBrush(Color.FromArgb(104, Accent)))
             using (var guide = new SolidBrush(Guide))
@@ -169,63 +180,41 @@ namespace ValeScore
                         {
                             int endY = firstY + ScoreLayout.StaffGap + 40;
                             g.DrawLine(line, 47, firstY, 47, endY);
-                            using (var brace = new GraphicsPath())
-                            {
-                                int middle = (firstY + endY) / 2;
-                                brace.AddBezier(45, firstY, 30, firstY + 15, 47, middle - 9, 33, middle);
-                                brace.AddBezier(33, middle, 47, middle + 9, 30, endY - 15, 45, endY);
-                                g.DrawPath(line, brace);
-                            }
+                            DrawBrace(g, ink, firstY, endY);
+                            int lowerTop = endY - 40;
+                            foreach (var measure in measures) g.DrawLine(line, measure.Left, firstY + 40, measure.Left, lowerTop);
+                            g.DrawLine(line, endX, firstY + 40, endX, lowerTop);
+                            if (after == score.Bars) g.FillRectangle(ink, endX + 3, firstY + 40, 3, lowerTop - firstY - 40);
                         }
 
                         for (int staff = 0; staff < instrument.Staves.Count; staff++, row++)
                         {
                             int y = layout.StaffTop(system, row);
-                            if (selected != null && selected.Part == part && selected.Staff == staff &&
-                                selected.Tick >= first * 16 && selected.Tick < after * 16)
+                            bool laneSelected = selected != null && selected.Part == part && selected.Staff == staff;
+                            var lane = instrument.Staves[staff];
+                            if (laneSelected && selected.Tick >= first * 16 && selected.Tick < after * 16)
                             {
-                                float x = layout.MeasureOf(selected.Tick / 16).At(selected.Tick % 16);
-                                g.FillRectangle(guide, x - 7, y - 19, 14, 76);
+                                var measure = layout.MeasureOf(selected.Tick / 16);
+                                var symbol = lane.Find(n => n.Tick == selected.Tick);
+                                float x = symbol == null ? measure.At(selected.Tick % 16) : EventX(measure, symbol);
+                                g.FillRectangle(guide, x - 8, y - 19, 16, 76);
                             }
 
-                            for (int i = 0; i < 5; i++) g.DrawLine(line, 47, y + 10 * i, endX, y + 10 * i);
+                            for (int i = 0; i < 5; i++) g.DrawLine(staffLine, 47, y + 10 * i, endX, y + 10 * i);
                             DrawClef(g, ink, line, staff, y);
-                            g.DrawString("4", meter, ink, 99, y - 4);
-                            g.DrawString("4", meter, ink, 99, y + 16);
+                            if (first == 0)
+                            {
+                                g.DrawString("4", meter, ink, 99, y - 4);
+                                g.DrawString("4", meter, ink, 99, y + 16);
+                            }
                             g.DrawLine(line, endX, y, endX, y + 40);
                             if (after == score.Bars) g.FillRectangle(ink, endX + 3, y, 3, 41);
 
-                            var lane = instrument.Staves[staff];
                             foreach (var measure in measures)
                             {
                                 g.DrawLine(line, measure.Left, y, measure.Left, y + 40);
-                                int start = measure.Index * 16;
                                 if (row == 0) g.DrawString((measure.Index + 1).ToString(), small, ink, measure.Left + 4, y - 20);
-                                int cursor = start;
-                                var accidentals = new Dictionary<int, int>();
-                                foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + 16))
-                                {
-                                    while (cursor < note.Tick)
-                                    {
-                                        int rest = Score.RestLength(cursor, note.Tick - cursor);
-                                        DrawRest(g, ink, line, measure.At(cursor - start), y, rest);
-                                        cursor += rest;
-                                    }
-                                    int previousAlter;
-                                    accidentals.TryGetValue(note.Step, out previousAlter);
-                                    bool active = (playing >= note.Tick && playing < note.Tick + note.Length) ||
-                                        (selected != null && selected.Part == part && selected.Staff == staff && selected.Tick == note.Tick);
-                                    DrawNote(g, active ? accent : ink, line, measure.At(note.Tick - start), y,
-                                        note.Step - BottomStep(staff), note.Length, note.Alter, previousAlter != note.Alter);
-                                    accidentals[note.Step] = note.Alter;
-                                    cursor += note.Length;
-                                }
-                                while (cursor < start + 16)
-                                {
-                                    int rest = Score.RestLength(cursor, start + 16 - cursor);
-                                    DrawRest(g, ink, line, rest == 16 ? measure.Left + measure.Width / 2 : measure.At(cursor - start), y, rest);
-                                    cursor += rest;
-                                }
+                                DrawMeasure(g, ink, accent, line, measure, lane, staff, y, laneSelected ? selected.Tick : -1, playing);
                             }
 
                             DrawLyrics(g, layout, lane, first, after, y, ink, center);
@@ -233,8 +222,20 @@ namespace ValeScore
                                 hover.Tick >= first * 16 && hover.Tick < after * 16 && !hover.HitNote)
                             {
                                 float x = layout.MeasureOf(hover.Tick / 16).At(hover.Tick % 16);
-                                float noteY = y + 40 - (hover.Step - BottomStep(staff)) * 5;
-                                g.FillEllipse(ghost, x - 5.8f, noteY - 3.4f, 11.6f, 6.8f);
+                                if (previewRest)
+                                {
+                                    if (previewLength == 16)
+                                    {
+                                        var measure = layout.MeasureOf(hover.Tick / 16);
+                                        x = measure.Left + measure.Width / 2;
+                                    }
+                                    MusicGlyphs.Rest(g, ghost, x, y, previewLength);
+                                }
+                                else
+                                {
+                                    using (var previewLine = new Pen(ghost, 1))
+                                        DrawNote(g, ghost, previewLine, x, y, hover.Step - BottomStep(staff), previewLength, previewAlter, previewAlter != 0);
+                                }
                             }
                         }
                     }
@@ -269,9 +270,9 @@ namespace ValeScore
                     if (!note.HyphenAfter) continue;
                     float leftEdge = x + width / 2 - 2;
                     float dash = Math.Min(measure.Right - 4, leftEdge + 6);
-                    if (i + 1 < lane.Count)
+                    var next = lane.Find(n => !n.IsRest && n.Tick > note.Tick);
+                    if (next != null)
                     {
-                        var next = lane[i + 1];
                         int nextBar = next.Tick / Score.BarTicks;
                         if (next.Lyric != null && nextBar < after)
                         {
@@ -313,62 +314,116 @@ namespace ValeScore
             }
         }
 
-        private static void DrawNote(Graphics g, Brush brush, Pen pen, float x, int top, int step, int length, int alter, bool accidental)
+        private static void DrawBrace(Graphics g, Brush ink, int top, int bottom)
+        {
+            float middle = (top + bottom) / 2f;
+            using (var brace = new GraphicsPath())
+            {
+                brace.AddBezier(45, top, 26, top + 14, 45, middle - 12, 31, middle);
+                brace.AddBezier(31, middle, 45, middle + 12, 26, bottom - 14, 45, bottom);
+                brace.AddBezier(45, bottom, 33, bottom - 18, 50, middle + 15, 35, middle);
+                brace.AddBezier(35, middle, 50, middle - 15, 33, top + 18, 45, top);
+                brace.CloseFigure();
+                g.FillPath(ink, brace);
+            }
+        }
+
+        private static void DrawMeasure(Graphics g, Brush ink, Brush accent, Pen line, ScoreLayout.Measure measure,
+            List<Note> lane, int staff, int top, int selected, int playing)
+        {
+            int start = measure.Index * Score.BarTicks;
+            int end = start + Score.BarTicks;
+            var events = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
+            var accidentals = new Dictionary<int, int>();
+            int cursor = start;
+            for (int i = 0; i < events.Length;)
+            {
+                var item = events[i];
+                DrawGaps(g, ink, measure, top, ref cursor, item.Tick);
+                int groupEnd = Score.BeamGroupEnd(events, i);
+                bool beamed = groupEnd > i + 1;
+                int direction = 0;
+                float xStart = 0, xEnd = 0, beamY = 0, rise = 0;
+                if (beamed)
+                {
+                    int sum = 0;
+                    for (int j = i; j < groupEnd; j++) sum += events[j].Step;
+                    direction = sum < (BottomStep(staff) + 4) * (groupEnd - i) ? -1 : 1;
+                    var last = events[groupEnd - 1];
+                    xStart = measure.At(item.Tick - start);
+                    xEnd = measure.At(last.Tick - start);
+                    rise = Math.Max(-10, Math.Min(10, NoteY(top, staff, last) - NoteY(top, staff, item)));
+                    beamY = NoteY(top, staff, item) + direction * 29;
+                    for (int j = i + 1; j < groupEnd; j++)
+                    {
+                        var n = events[j];
+                        float fraction = (measure.At(n.Tick - start) - xStart) / (xEnd - xStart);
+                        float limit = NoteY(top, staff, n) + direction * 29 - rise * fraction;
+                        beamY = direction < 0 ? Math.Min(beamY, limit) : Math.Max(beamY, limit);
+                    }
+                }
+
+                for (; i < groupEnd; i++)
+                {
+                    var n = events[i];
+                    var color = n.Tick == selected || (!n.IsRest && playing >= n.Tick && playing < n.Tick + n.Length) ? accent : ink;
+                    float x = EventX(measure, n);
+                    if (n.IsRest) MusicGlyphs.Rest(g, color, x, top, n.Length);
+                    else
+                    {
+                        int prior;
+                        accidentals.TryGetValue(n.Step, out prior);
+                        float? stemEnd = beamed ? (float?)(beamY + rise * (x - xStart) / (xEnd - xStart)) : null;
+                        DrawNote(g, color, line, x, top, n.Step - BottomStep(staff), n.Length, n.Alter, prior != n.Alter, direction, stemEnd);
+                        accidentals[n.Step] = n.Alter;
+                    }
+                    cursor = n.Tick + n.Length;
+                }
+
+                if (beamed)
+                {
+                    int levels = item.Length == 1 ? 2 : 1;
+                    for (int level = 0; level < levels; level++)
+                    {
+                        float leftY = beamY - direction * level * 7.1f;
+                        float rightY = leftY + rise;
+                        float leftX = MusicGlyphs.StemX(xStart, direction) - .7f;
+                        float rightX = MusicGlyphs.StemX(xEnd, direction) + .7f;
+                        float thickness = -direction * 3.8f;
+                        g.FillPolygon(ink, new[] { new PointF(leftX, leftY), new PointF(rightX, rightY),
+                            new PointF(rightX, rightY + thickness), new PointF(leftX, leftY + thickness) });
+                    }
+                }
+            }
+            DrawGaps(g, ink, measure, top, ref cursor, end);
+        }
+
+        private static void DrawGaps(Graphics g, Brush ink, ScoreLayout.Measure measure, int top, ref int cursor, int until)
+        {
+            int start = measure.Index * Score.BarTicks;
+            while (cursor < until)
+            {
+                int length = Score.RestLength(cursor, until - cursor);
+                float x = length == Score.BarTicks ? measure.Left + measure.Width / 2 : measure.At(cursor - start);
+                MusicGlyphs.Rest(g, ink, x, top, length);
+                cursor += length;
+            }
+        }
+
+        private static void DrawNote(Graphics g, Brush brush, Pen pen, float x, int top, int step, int length, int alter, bool accidental,
+            int beamDirection = 0, float? beamY = null)
         {
             float y = top + 40 - step * 5;
             for (int ledger = -2; ledger >= step; ledger -= 2) g.DrawLine(pen, x - 9, top + 40 - ledger * 5, x + 9, top + 40 - ledger * 5);
             for (int ledger = 10; ledger <= step; ledger += 2) g.DrawLine(pen, x - 9, top + 40 - ledger * 5, x + 9, top + 40 - ledger * 5);
-            if (accidental)
-                using (var font = new Font("Segoe UI Symbol", 12))
-                    g.DrawString(alter == 1 ? "♯" : alter == -1 ? "♭" : "♮", font, brush, x - 21, y - 13);
-            var state = g.Save();
-            g.TranslateTransform(x, y);
-            g.RotateTransform(-19);
-            using (var outline = new Pen(((SolidBrush)brush).Color, 1.5f))
-            {
-                if (length >= 8) g.DrawEllipse(outline, -5.8f, -3.4f, 11.6f, 6.8f);
-                else g.FillEllipse(brush, -5.8f, -3.4f, 11.6f, 6.8f);
-            }
-            g.Restore(state);
+            if (accidental) MusicGlyphs.Accidental(g, brush, x - 14, y, alter);
+            MusicGlyphs.Head(g, brush, x, y, length);
             if (length == 16) return;
-            int direction = step < 4 ? -1 : 1;
-            float stem = x - direction * 5;
-            float end = y + direction * 29;
-            g.DrawLine(pen, stem, y, stem, end);
-            int flags = length == 1 ? 2 : length == 2 ? 1 : 0;
-            for (int flag = 0; flag < flags; flag++)
-            {
-                float start = end - direction * flag * 7;
-                g.DrawBezier(pen, stem, start, stem + 1, start - direction * 9, stem + 12, start - direction * 8,
-                    stem + 8, start - direction * 19);
-            }
-        }
-
-        private static void DrawRest(Graphics g, Brush brush, Pen pen, float x, int y, int length)
-        {
-            if (length >= 8)
-            {
-                g.FillRectangle(brush, x - 5, y + (length == 16 ? 10 : 16), 10, 4);
-                return;
-            }
-            using (var stroke = new Pen(pen.Color, 1.6f))
-            {
-                if (length == 4)
-                {
-                    g.DrawLines(stroke, new[] { new PointF(x - 2, y + 7), new PointF(x + 4, y + 16),
-                        new PointF(x - 2, y + 22), new PointF(x + 3, y + 29) });
-                    g.DrawArc(stroke, x - 3, y + 26, 8, 8, 80, 240);
-                    return;
-                }
-                g.DrawLine(stroke, x + 5, y + 13, x - 1, y + (length == 1 ? 36 : 28));
-                g.FillEllipse(brush, x - 5, y + 12, 5, 5);
-                g.DrawArc(stroke, x - 3, y + 11, 8, 8, 5, 140);
-                if (length == 1)
-                {
-                    g.FillEllipse(brush, x - 7, y + 21, 5, 5);
-                    g.DrawArc(stroke, x - 5, y + 20, 8, 8, 5, 140);
-                }
-            }
+            int direction = beamDirection != 0 ? beamDirection : step < 4 ? -1 : 1;
+            float end = beamY ?? y + direction * 29;
+            MusicGlyphs.Stem(g, brush, x, y, direction, end);
+            if (!beamY.HasValue && length <= 2)
+                MusicGlyphs.Flags(g, brush, MusicGlyphs.StemX(x, direction), end, direction, length == 1 ? 2 : 1);
         }
     }
 }
