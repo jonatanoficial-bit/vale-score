@@ -15,6 +15,8 @@ namespace ValeScore
         [DataMember] public int Length;
         [DataMember] public int Step;
         [DataMember] public int Alter;
+        [DataMember(EmitDefaultValue = false)] public string Lyric;
+        [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
 
         public int Midi
         {
@@ -35,11 +37,13 @@ namespace ValeScore
     {
         public const int BarTicks = 16;
         public const int MaxBars = 64;
+        public const int CurrentVersion = 2;
+        public const int MaxLyricLength = 24;
         public static readonly int[] Durations = { 16, 8, 4, 2, 1 };
         public static readonly string[] Steps = { "C", "D", "E", "F", "G", "A", "B" };
         public static readonly string[] Names = { "Dó", "Ré", "Mi", "Fá", "Sol", "Lá", "Si" };
         public static readonly int[] Semitones = { 0, 2, 4, 5, 7, 9, 11 };
-        [DataMember] public int Version = 1;
+        [DataMember] public int Version = CurrentVersion;
         [DataMember] public string Title = "Partitura sem título";
         [DataMember] public string Author = "";
         [DataMember] public int Tempo = 96;
@@ -60,6 +64,10 @@ namespace ValeScore
             int[] bass = { 21, 25, 24, 22, 23, 27, 25, 21 };
             for (int i = 0; i < bass.Length; i++)
                 score.Put(0, 1, i * 8, 8, bass[i], 0);
+            string[] lyrics = { "O", "di", "a", "nas", "ce", "so", "bre", "o", "mar", "e", "a", "luz", "vem", "bri", "lhar" };
+            int[] joins = { 1, 3, 5, 13 };
+            for (int i = 0; i < lyrics.Length; i++)
+                score.SetLyric(0, 0, i * 4, lyrics[i], joins.Contains(i));
             return score;
         }
 
@@ -86,10 +94,32 @@ namespace ValeScore
             if (previous != null)
             {
                 note.Id = previous.Id;
+                note.Lyric = previous.Lyric;
+                note.HyphenAfter = previous.HyphenAfter;
                 notes.Remove(previous);
             }
             notes.Add(note);
             notes.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+        }
+
+        public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter)
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick);
+            if (note == null) throw new InvalidOperationException("Selecione uma nota para escrever a letra.");
+            string lyric = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+            if (!ValidLyric(lyric))
+                throw new InvalidOperationException("Use até 24 caracteres por nota. Espaço e hífen avançam na partitura.");
+            note.Lyric = lyric;
+            note.HyphenAfter = lyric != null && hyphenAfter;
+        }
+
+        private static bool ValidLyric(string text)
+        {
+            if (text == null) return true;
+            if (text.Length == 0 || text.Length > MaxLyricLength || text.Any(c => char.IsWhiteSpace(c) || char.IsControl(c)))
+                return false;
+            try { System.Xml.XmlConvert.VerifyXmlChars(text); return true; }
+            catch (System.Xml.XmlException) { return false; }
         }
 
         private static bool ValidNote(Note n)
@@ -106,7 +136,7 @@ namespace ValeScore
 
         public void Validate()
         {
-            if (Version != 1 || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
+            if (Version != CurrentVersion || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
                 string.IsNullOrWhiteSpace(Title) || Title.Length > 80 || Author == null || Author.Length > 80 ||
                 Parts == null || Parts.Count < 1 || Parts.Count > 4)
                 throw new InvalidDataException("Projeto inválido ou versão de arquivo incompatível.");
@@ -125,7 +155,7 @@ namespace ValeScore
                     foreach (var n in lane)
                     {
                         if (!ValidNote(n) || n.Tick < end || n.Tick >= Bars * BarTicks ||
-                            !ids.Add(n.Id))
+                            !ids.Add(n.Id) || !ValidLyric(n.Lyric) || (n.Lyric == null && n.HyphenAfter))
                             throw new InvalidDataException("Nota ou ritmo inválido no projeto.");
                         end = n.Tick + n.Length;
                     }
@@ -153,6 +183,7 @@ namespace ValeScore
                 {
                     var score = (Score)Serializer.ReadObject(stream);
                     if (score == null) throw new InvalidDataException("Projeto vazio.");
+                    if (score.Version == 1) score.Version = CurrentVersion;
                     score.Validate();
                     return score;
                 }

@@ -130,7 +130,9 @@ namespace ValeScore
                             int start = bar * 16;
                             int end = start + 16;
                             int cursor = start;
-                            foreach (var note in part.Staves[staff].Where(n => n.Tick >= start && n.Tick < end))
+                            var lane = part.Staves[staff];
+                            var previous = lane.LastOrDefault(n => n.Tick < start);
+                            foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < end))
                             {
                                 while (cursor < note.Tick)
                                 {
@@ -138,7 +140,8 @@ namespace ValeScore
                                     WriteNote(xml, null, rest, staff, part.Staves.Count > 1);
                                     cursor += rest;
                                 }
-                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1);
+                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1, previous != null && previous.HyphenAfter);
+                                previous = note;
                                 cursor += note.Length;
                             }
                             while (cursor < end)
@@ -156,7 +159,7 @@ namespace ValeScore
             }
         }
 
-        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano)
+        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false)
         {
             xml.WriteStartElement("note");
             if (note == null) xml.WriteElementString("rest", "");
@@ -172,6 +175,17 @@ namespace ValeScore
             xml.WriteElementString("voice", (staff + 1).ToString());
             xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, length)]);
             if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
+            if (note != null && note.Lyric != null)
+            {
+                xml.WriteStartElement("lyric");
+                xml.WriteAttributeString("number", "1");
+                string syllabic = fromPrevious
+                    ? (note.HyphenAfter ? "middle" : "end")
+                    : (note.HyphenAfter ? "begin" : "single");
+                xml.WriteElementString("syllabic", syllabic);
+                xml.WriteElementString("text", note.Lyric);
+                xml.WriteEndElement();
+            }
             xml.WriteEndElement();
         }
     }
