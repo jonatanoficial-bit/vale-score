@@ -216,26 +216,38 @@ namespace ValeScore
 
                     // Some synths stop every instance of a pitch on note-off. Merge overlapping
                     // instances of the same pitch on a channel while retaining adjacent attacks.
-                    foreach (var group in part.Staves.SelectMany(s => s).Where(n => !n.IsRest).GroupBy(n => n.Midi))
+                    var attacks = new List<Tuple<Note, int>>();
+                    foreach (var staff in part.Staves)
                     {
-                        int start = -1, end = -1;
-                        foreach (var note in group.OrderBy(n => n.Tick))
+                        int loudness = 88;
+                        foreach (var note in staff.Where(n => !n.IsRest))
                         {
+                            if (note.Dynamic != null) loudness = Score.Velocity(note.Dynamic);
+                            attacks.Add(Tuple.Create(note, loudness));
+                        }
+                    }
+                    foreach (var group in attacks.GroupBy(n => n.Item1.Midi))
+                    {
+                        int start = -1, end = -1, velocity = 88;
+                        foreach (var attack in group.OrderBy(n => n.Item1.Tick))
+                        {
+                            var note = attack.Item1;
                             if (note.Tick < end) { end = Math.Max(end, note.Tick + note.Length); continue; }
-                            if (start >= 0) AddPitch(data, channel, group.Key, start, end);
+                            if (start >= 0) AddPitch(data, channel, group.Key, start, end, velocity);
                             start = note.Tick;
                             end = note.Tick + note.Length;
+                            velocity = attack.Item2;
                         }
-                        AddPitch(data, channel, group.Key, start, end);
+                        AddPitch(data, channel, group.Key, start, end, velocity);
                     }
                     WriteTrack(writer, data, score.Bars * 1920);
                 }
             }
         }
 
-        private static void AddPitch(List<EventData> events, int channel, int pitch, int start, int end)
+        private static void AddPitch(List<EventData> events, int channel, int pitch, int start, int end, int velocity)
         {
-            events.Add(new EventData { Tick = start * 120, Order = 1, Data = new[] { (byte)(0x90 | channel), (byte)pitch, (byte)88 } });
+            events.Add(new EventData { Tick = start * 120, Order = 1, Data = new[] { (byte)(0x90 | channel), (byte)pitch, (byte)velocity } });
             events.Add(new EventData { Tick = end * 120, Data = new[] { (byte)(0x80 | channel), (byte)pitch, (byte)0 } });
         }
 

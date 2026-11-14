@@ -26,6 +26,59 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var expression = Score.New(false);
+        expression.Put(0, 0, 0, 4, 28, 0);
+        expression.Put(0, 0, 4, 4, 29, 0);
+        expression.Put(0, 0, 8, 4, 30, 0);
+        expression.SetExpression(0, 0, 0, "G7/B", "ppp");
+        expression.SetExpression(0, 0, 8, "Bbadd9", "fff");
+        expression.Validate();
+        var markedLayout = new ScoreLayout(expression);
+        using (var image = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var canvas = Graphics.FromImage(image))
+        {
+            canvas.Clear(Color.White);
+            ScorePage.Draw(canvas, expression, markedLayout, 0, null, -1, null);
+            int x = (int)markedLayout.MeasureOf(0).At(0);
+            Func<int, bool> hasInk = top => Enumerable.Range(x - 18, 37)
+                .Any(px => Enumerable.Range(top, 15).Any(py => image.GetPixel(px, py).R < 110));
+            Assert(hasInk(ScoreLayout.FirstStaffTop - 37) && hasInk(ScoreLayout.FirstStaffTop + 54),
+                "Cifra acima e dinâmica abaixo da pauta são desenhadas");
+            image.Save(Path.Combine(directory, "expressao.png"));
+        }
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(expression, xml);
+            xml.Position = 0;
+            var converted = MusicXmlImport.Read(xml, "Expressão");
+            var figures = converted.Project.Parts[0].Staves[0];
+            Assert(converted.Omitted == 0 && figures[0].Chord == "G7/B" && figures[0].Dynamic == "ppp" &&
+                figures[2].Chord == "Bbadd9" && figures[2].Dynamic == "fff",
+                "MusicXML preserva cifras estruturadas, baixo alternativo e dinâmicas");
+        }
+        using (var midi = new MemoryStream())
+        {
+            MidiSequence.Export(expression, midi);
+            midi.Position = 0;
+            var attacks = MidiSequence.Read(midi).Events.Where(e => (e.Status & 240) == 0x90);
+            Assert(attacks.Select(e => e.Data2).SequenceEqual(new[] { 24, 24, 125 }),
+                "Velocidade MIDI acompanha a dinâmica até a próxima marca");
+        }
+        using (var wave = Output.Wave(expression))
+        {
+            byte[] data = wave.ToArray();
+            int beat = (int)Math.Round(Output.SampleRate * 60.0 / expression.Tempo);
+            Func<int, int> peak = beatIndex => Enumerable.Range(0, beat - 1)
+                .Max(i => Math.Abs((int)BitConverter.ToInt16(data, 44 + ((beatIndex * beat) + i) * 2)));
+            Assert(peak(2) > peak(0) * 3, "Dinâmica altera o volume do WAV");
+        }
+        expression.Transpose(0, 0, null, 2, true);
+        Assert(expression.Parts[0].Staves[0][0].Chord == "A7/C#" &&
+            expression.Parts[0].Staves[0][2].Chord == "Cadd9", "Transposição move cifra e baixo alternativo");
+        bool rejectedChord = false;
+        try { expression.SetExpression(0, 0, 0, "acorde inválido", "mf"); }
+        catch (InvalidOperationException) { rejectedChord = true; }
+        Assert(rejectedChord && expression.Parts[0].Staves[0][0].Chord == "A7/C#", "Cifra inválida não altera a nota");
         var interchange = Score.New(false);
         interchange.Put(0, 0, 0, 7, 28, 1);
         interchange.SetLyric(0, 0, 0, "céu", false);

@@ -218,6 +218,15 @@ namespace ValeScore
                             }
 
                             DrawLyrics(g, layout, lane, first, after, y, ink, center);
+                            foreach (var item in lane.Where(n => n.Tick >= first * Score.BarTicks && n.Tick < after * Score.BarTicks))
+                            {
+                                if (item.Chord == null && item.Dynamic == null) continue;
+                                float x = EventX(layout.MeasureOf(item.Tick / Score.BarTicks), item);
+                                if (item.Chord != null)
+                                    g.DrawString(item.Chord, ScoreLayout.ChordFont, ink, new PointF(x, y - 37), center);
+                                if (item.Dynamic != null)
+                                    g.DrawString(item.Dynamic, ScoreLayout.DynamicFont, ink, new PointF(x, y + 54), center);
+                            }
                             if (hover != null && hover.Part == part && hover.Staff == staff &&
                                 hover.Tick >= first * 16 && hover.Tick < after * 16 && !hover.HitNote)
                             {

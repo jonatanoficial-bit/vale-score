@@ -94,6 +94,8 @@ namespace ValeScore
         }
 
         internal static Font TextFont { get { return LyricFont; } }
+        internal static readonly Font ChordFont = new Font("Segoe UI Semibold", 14, FontStyle.Regular, GraphicsUnit.Pixel);
+        internal static readonly Font DynamicFont = new Font("Georgia", 14, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Pixel);
 
         private Measure BuildMeasure(List<Note>[] lanes, int bar)
         {
@@ -106,6 +108,8 @@ namespace ValeScore
             {
                 Note previous = null;
                 float previousWidth = 0;
+                int previousChord = -1, previousDynamic = -1;
+                float previousChordWidth = 0, previousDynamicWidth = 0;
                 var accidentals = new Dictionary<int, int>();
                 foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + Score.BarTicks))
                 {
@@ -119,6 +123,8 @@ namespace ValeScore
                     accidentals.TryGetValue(note.Step, out alter);
                     if (note.Alter != alter) alterations[unit] = true;
                     accidentals[note.Step] = note.Alter;
+                    ReserveMark(note.Chord, ChordFont, unit, halfWidths, links, ref previousChord, ref previousChordWidth);
+                    ReserveMark(note.Dynamic, DynamicFont, unit, halfWidths, links, ref previousDynamic, ref previousDynamicWidth);
                     if (note.Lyric == null) continue;
                     float half = WidthOf(note.Lyric) / 2f;
                     halfWidths[unit] = Math.Max(halfWidths[unit], half);
@@ -146,6 +152,22 @@ namespace ValeScore
                 end = Math.Max(end, left + Math.Max(13, halfWidths[unit] + 8));
             }
             return new Measure(bar, offsets, end);
+        }
+
+        private static void ReserveMark(string text, Font font, int unit, float[] widths, List<Tuple<int, float>>[] links,
+            ref int previous, ref float previousWidth)
+        {
+            if (text == null) return;
+            float half = TextRenderer.MeasureText(text, font, Size.Empty,
+                TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix).Width / 2f;
+            widths[unit] = Math.Max(widths[unit], half);
+            if (previous >= 0)
+            {
+                if (links[unit] == null) links[unit] = new List<Tuple<int, float>>();
+                links[unit].Add(Tuple.Create(previous, previousWidth + half + 10));
+            }
+            previous = unit;
+            previousWidth = half;
         }
 
         private int WidthOf(string text)

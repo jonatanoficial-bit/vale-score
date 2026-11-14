@@ -17,6 +17,8 @@ namespace ValeScore
         [DataMember] public int Alter;
         [DataMember(EmitDefaultValue = false)] public string Lyric;
         [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
+        [DataMember(EmitDefaultValue = false)] public string Chord;
+        [DataMember(EmitDefaultValue = false)] public string Dynamic;
         [DataMember(EmitDefaultValue = false)] public bool IsRest;
 
         public int Midi
@@ -38,7 +40,13 @@ namespace ValeScore
     {
         public const int BarTicks = 16;
         public const int MaxBars = 64;
-        public const int CurrentVersion = 4;
+        public const int CurrentVersion = 5;
+        public static readonly string[] Dynamics = { "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff" };
+        public static int Velocity(string dynamic)
+        {
+            int index = Array.IndexOf(Dynamics, dynamic);
+            return index < 0 ? 88 : new[] { 24, 36, 49, 64, 80, 96, 112, 125 }[index];
+        }
         public const int MaxLyricLength = 24;
         public static readonly int[] Durations = { 16, 8, 4, 2, 1 };
         public static readonly string[] Steps = { "C", "D", "E", "F", "G", "A", "B" };
@@ -114,11 +122,25 @@ namespace ValeScore
                 {
                     note.Lyric = previous.Lyric;
                     note.HyphenAfter = previous.HyphenAfter;
+                    note.Chord = previous.Chord;
+                    note.Dynamic = previous.Dynamic;
                 }
                 notes.Remove(previous);
             }
             notes.Add(note);
             notes.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+        }
+
+        public void SetExpression(int part, int staff, int tick, string chord, string dynamic)
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            if (note == null) throw new InvalidOperationException("Selecione uma nota para adicionar cifra ou dinâmica.");
+            ChordSymbol symbol = null;
+            if (!string.IsNullOrWhiteSpace(chord) && !ChordSymbol.TryParse(chord, out symbol))
+                throw new InvalidOperationException("Cifra inválida. Use, por exemplo, Cmaj7, F#m7, Bbadd9 ou G7/B.");
+            if (dynamic != null && !Dynamics.Contains(dynamic)) throw new InvalidOperationException("Dinâmica inválida.");
+            note.Chord = symbol == null ? null : symbol.Text;
+            note.Dynamic = dynamic;
         }
 
         public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter)
@@ -145,7 +167,10 @@ namespace ValeScore
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
-            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter;
+            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter && n.Chord == null && n.Dynamic == null;
+            ChordSymbol symbol;
+            if ((n.Chord != null && !ChordSymbol.TryParse(n.Chord, out symbol)) ||
+                (n.Dynamic != null && !Dynamics.Contains(n.Dynamic))) return false;
             return n.Step >= 0 && n.Step <= 69 && n.Alter >= -1 && n.Alter <= 1 && n.Midi >= 0 && n.Midi <= 127;
         }
 
@@ -201,7 +226,7 @@ namespace ValeScore
                 (partIndex.HasValue && (partIndex.Value < 0 || partIndex.Value >= Parts.Count)) ||
                 amount < -24 || amount > 24)
                 throw new ArgumentOutOfRangeException("Intervalo de transposição inválido.");
-            var changes = new List<Tuple<Note, int, int>>();
+            var changes = new List<Tuple<Note, int, int, string>>();
             for (int p = 0; p < Parts.Count; p++)
             {
                 if (partIndex.HasValue && p != partIndex.Value) continue;
@@ -228,10 +253,17 @@ namespace ValeScore
                     int min = staff == 0 ? 25 : 13;
                     if (step < min || step > min + 18)
                         throw new InvalidOperationException("Uma nota sairia da extensão editável da pauta. Escolha um intervalo menor.");
-                    changes.Add(Tuple.Create(note, step, alter));
+                    ChordSymbol chord;
+                    string symbol = ChordSymbol.TryParse(note.Chord, out chord) ? chord.Transpose(amount, chromatic) : null;
+                    changes.Add(Tuple.Create(note, step, alter, symbol));
                 }
             }
-            foreach (var change in changes) { change.Item1.Step = change.Item2; change.Item1.Alter = change.Item3; }
+            foreach (var change in changes)
+            {
+                change.Item1.Step = change.Item2;
+                change.Item1.Alter = change.Item3;
+                change.Item1.Chord = change.Item4;
+            }
             return changes.Count;
         }
 
@@ -246,7 +278,7 @@ namespace ValeScore
                 var copies = staff.Where(n => n.Tick >= start && n.Tick < end).Select(n => new Note
                 {
                     Tick = n.Tick + BarTicks, Length = n.Length, Step = n.Step, Alter = n.Alter,
-                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter
+                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord, Dynamic = n.Dynamic
                 }).ToArray();
                 foreach (var note in staff.Where(n => n.Tick >= end)) note.Tick += BarTicks;
                 staff.AddRange(copies);
@@ -285,7 +317,7 @@ namespace ValeScore
                 staff.AddRange(sources[i].Select(n => new Note
                 {
                     Tick = start + n.Tick, Length = n.Length, Step = n.Step, Alter = n.Alter,
-                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter
+                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord, Dynamic = n.Dynamic
                 }));
                 staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
             }
@@ -366,7 +398,7 @@ namespace ValeScore
                 {
                     var score = (Score)Serializer.ReadObject(stream);
                     if (score == null) throw new InvalidDataException("Projeto vazio.");
-                    if (score.Version >= 1 && score.Version <= 3) score.Version = CurrentVersion;
+                    if (score.Version >= 1 && score.Version < CurrentVersion) score.Version = CurrentVersion;
                     score.Validate();
                     return score;
                 }

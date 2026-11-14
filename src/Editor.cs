@@ -107,6 +107,7 @@ namespace ValeScore
             Item(edit, "Refazer", Keys.Control | Keys.Y, () => History(redo, undo));
             Item(edit, "Editar letra da nota", Keys.None, StartLyrics).ShortcutKeyDisplayString = "Shift+L";
             Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
+            Item(edit, "Cifra e dinâmica…", Keys.Control | Keys.H, EditExpression);
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
             Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
@@ -206,12 +207,13 @@ namespace ValeScore
             sidebar.Controls.Add(Button("Título e andamento", Properties));
             sidebar.Controls.Add(Caption("SELEÇÃO"));
             selection.Width = 172;
-            selection.Height = 70;
+            selection.Height = 80;
             selection.ForeColor = TextColor;
             sidebar.Controls.Add(selection);
             editLyricButton = Button("Editar letra", StartLyrics);
             eraseNoteButton = Button("Apagar seleção", RemoveNote);
             sidebar.Controls.Add(editLyricButton);
+            sidebar.Controls.Add(Button("Cifra e dinâmica", EditExpression));
             sidebar.Controls.Add(eraseNoteButton);
 
             var modes = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(12, 5, 0, 0),
@@ -616,6 +618,41 @@ namespace ValeScore
             if (note == null || note.Lyric == null) { Report("A nota selecionada está sem letra."); return; }
             if (Change(() => score.SetLyric(position.Part, position.Staff, position.Tick, null, false)))
                 Report("Letra removida da nota");
+        }
+
+        private void EditExpression()
+        {
+            if (!CommitLyric()) return;
+            var note = SelectedNote();
+            if (note == null) { Report("Selecione uma nota para editar cifra e dinâmica."); return; }
+            using (var dialog = new Form { Text = "Cifra e dinâmica", ClientSize = new Size(382, 168),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, Font = Font })
+            {
+                var chord = new TextBox { Text = note.Chord ?? "", MaxLength = 16, AccessibleName = "Cifra",
+                    Bounds = new Rectangle(160, 16, 201, 27) };
+                var dynamic = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Dinâmica",
+                    Bounds = new Rectangle(160, 60, 201, 28) };
+                dynamic.Items.Add("Sem marca");
+                dynamic.Items.AddRange(Score.Dynamics);
+                dynamic.SelectedIndex = Array.IndexOf(Score.Dynamics, note.Dynamic) + 1;
+                var save = new Button { Text = "Aplicar", Bounds = new Rectangle(182, 114, 84, 30) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(276, 114, 85, 30) };
+                save.Click += delegate
+                {
+                    string marking = dynamic.SelectedIndex == 0 ? null : Score.Dynamics[dynamic.SelectedIndex - 1];
+                    if (Change(() => score.SetExpression(position.Part, position.Staff, position.Tick, chord.Text, marking)))
+                        dialog.DialogResult = DialogResult.OK;
+                    else MessageBox.Show(dialog, status.Text);
+                };
+                dialog.Controls.AddRange(new Control[] {
+                    new Label { Text = "Cifra (ex. G7/B)", AutoSize = true, Location = new Point(16, 18) }, chord,
+                    new Label { Text = "Dinâmica", AutoSize = true, Location = new Point(16, 62) }, dynamic, save, cancel
+                });
+                dialog.AcceptButton = save;
+                dialog.CancelButton = cancel;
+                dialog.ShowDialog(this);
+            }
         }
 
         private bool MoveToAdjacentNote(int direction)

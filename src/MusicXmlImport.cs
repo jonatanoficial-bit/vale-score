@@ -148,6 +148,8 @@ namespace ValeScore
             {
                 double cursor = 0, previous = 0;
                 int[] ends = new int[staves];
+                var chords = new Dictionary<int, string>();
+                var dynamics = new Dictionary<int, string>();
                 foreach (var child in measure.Elements())
                 {
                     string kind = child.Name.LocalName;
@@ -161,6 +163,26 @@ namespace ValeScore
                                 throw new InvalidDataException("A importação MusicXML desta prévia aceita partituras em 4/4.");
                         if (child.Elements("key").Any(k => Integer(k.Element("fifths"), 0) != 0) ||
                             child.Element("transpose") != null) result.Normalized++;
+                        continue;
+                    }
+                    if (kind == "harmony" || kind == "direction")
+                    {
+                        var marks = child.Descendants("dynamics").SelectMany(e => e.Elements());
+                        if (kind == "direction" && !marks.Any()) continue;
+                        int staffNumber = Integer(child.Element("staff"), 1);
+                        double atPosition = cursor + Integer(child.Element("offset"), 0) * 4.0 / divisions;
+                        int tickOfMark = (int)Math.Round(atPosition, MidpointRounding.AwayFromZero);
+                        string text = kind == "harmony" ? ChordSymbol.Read(child) :
+                            marks.Select(e => e.Name.LocalName).FirstOrDefault(n => Score.Dynamics.Contains(n));
+                        if (staffNumber < 1 || staffNumber > staves || tickOfMark < 0 || tickOfMark >= Score.BarTicks || text == null)
+                            result.Omitted++;
+                        else
+                        {
+                            var target = kind == "harmony" ? chords : dynamics;
+                            int key = (staffNumber - 1) * Score.BarTicks + tickOfMark;
+                            if (target.ContainsKey(key)) result.Omitted++;
+                            target[key] = text;
+                        }
                         continue;
                     }
                     if (kind != "note" && kind != "forward" && kind != "backup") continue;
@@ -215,6 +237,19 @@ namespace ValeScore
                     ends[staff] = end;
                     if (Math.Abs(tick - start) > .00001 || Math.Abs(end - start - length) > .00001) result.Normalized++;
                 }
+                var usedChords = new HashSet<int>();
+                var usedDynamics = new HashSet<int>();
+                for (int staff = 0; staff < staves; staff++)
+                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / Score.BarTicks == bar))
+                {
+                    int key = staff * Score.BarTicks + note.Tick % Score.BarTicks;
+                    string chord, marking;
+                    if (chords.TryGetValue(key, out chord)) usedChords.Add(key);
+                    if (dynamics.TryGetValue(key, out marking)) usedDynamics.Add(key);
+                    if (chord != null || marking != null)
+                        result.Project.SetExpression(part, staff, note.Tick, chord, marking);
+                }
+                result.Omitted += chords.Count - usedChords.Count + dynamics.Count - usedDynamics.Count;
                 bar++;
             }
         }

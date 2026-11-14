@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.7.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.8.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -99,7 +99,7 @@ Base da matriz: prévia 0.7.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 05.04 | Trinados, mordentes e ornamentos | Pendente | |
 | 05.05 | Glissandi, portamenti e arpejos | Pendente | |
 | 05.06 | Tremolos de uma e várias notas | Pendente | |
-| 05.07 | Dinâmicas de ppp a fff e níveis adicionais | Pendente | |
+| 05.07 | Dinâmicas de ppp a fff e níveis adicionais | Parcial | [Testes de MIDI, WAV e MusicXML](tests/Smoke.cs). Oito níveis de ppp a fff, sem níveis personalizados. |
 | 05.08 | Crescendos, diminuendos e hairpins | Pendente | |
 | 05.09 | Textos expressivos e instruções técnicas | Pendente | |
 | 05.10 | Mudanças de tempo, ritardando e accelerando | Pendente | |
@@ -110,7 +110,7 @@ Base da matriz: prévia 0.7.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
-| 06.01 | Cifras de acordes complexas e personalizáveis | Pendente | |
+| 06.01 | Cifras de acordes complexas e personalizáveis | Parcial | [Testes de intercâmbio e transposição](tests/Smoke.cs). Qualidades comuns e baixos alternativos. Personalização pendente. |
 | 06.02 | Acordes com tensões, alterações, inversões e baixos alternativos | Pendente | |
 | 06.03 | Múltiplas linhas de cifras e extensores | Pendente | |
 | 06.04 | Diagramas de acordes para instrumentos de cordas | Pendente | |

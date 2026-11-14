@@ -46,14 +46,20 @@ namespace ValeScore
             var samples = new float[size];
             double gain = 0.68 / Math.Sqrt(score.Parts.Sum(p => p.Staves.Count));
             foreach (var part in score.Parts)
-            foreach (var staff in part.Staves)
-            foreach (var note in staff)
             {
-                if (note.IsRest) continue;
-                int start = (int)Math.Round(note.Tick * tick);
-                int count = (int)Math.Round((note.Tick + note.Length) * tick) - start;
                 double decay = part.Instrument == "Voz" ? 0.8 : part.Instrument == "Violão" ? 5.0 : 2.8;
-                AddTone(samples, start, count, note.Midi, gain, decay);
+                foreach (var staff in part.Staves)
+                {
+                    int velocity = 88;
+                    foreach (var note in staff)
+                    {
+                        if (note.IsRest) continue;
+                        if (note.Dynamic != null) velocity = Score.Velocity(note.Dynamic);
+                        int start = (int)Math.Round(note.Tick * tick);
+                        int count = (int)Math.Round((note.Tick + note.Length) * tick) - start;
+                        AddTone(samples, start, count, note.Midi, gain * velocity / 88, decay);
+                    }
+                }
             }
             return WriteWave(samples);
         }
@@ -254,6 +260,9 @@ namespace ValeScore
                                     cursor += rest;
                                 }
                                 string beam = groupEnd - groupStart < 2 ? null : i == groupStart ? "begin" : i == groupEnd - 1 ? "end" : "continue";
+                                ChordSymbol chord;
+                                if (note.Chord != null && ChordSymbol.TryParse(note.Chord, out chord)) chord.Write(xml, staff, part.Staves.Count > 1);
+                                if (note.Dynamic != null) WriteDynamic(xml, note.Dynamic, staff, part.Staves.Count > 1);
                                 WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1, previous != null && previous.HyphenAfter, beam);
                                 if (!note.IsRest) previous = note;
                                 cursor += note.Length;
@@ -271,6 +280,22 @@ namespace ValeScore
                 }
                 xml.WriteEndElement();
             }
+        }
+
+        private static void WriteDynamic(XmlWriter xml, string marking, int staff, bool piano)
+        {
+            xml.WriteStartElement("direction");
+            xml.WriteAttributeString("placement", "below");
+            xml.WriteStartElement("direction-type");
+            xml.WriteStartElement("dynamics");
+            xml.WriteElementString(marking, "");
+            xml.WriteEndElement();
+            xml.WriteEndElement();
+            if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
+            xml.WriteStartElement("sound");
+            xml.WriteAttributeString("dynamics", (Score.Velocity(marking) * 100.0 / 90).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            xml.WriteEndElement();
+            xml.WriteEndElement();
         }
 
         private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false, string beam = null)
