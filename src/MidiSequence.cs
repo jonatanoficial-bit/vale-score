@@ -11,6 +11,7 @@ namespace ValeScore
         public long Tick;
         public double Seconds;
         public int Status, Data1, Data2;
+        public int Track;
         internal int Tempo;
     }
 
@@ -19,6 +20,10 @@ namespace ValeScore
         public MidiEvent[] Events { get; private set; }
         public double Duration { get; private set; }
         public int Tracks { get; private set; }
+        public int Division { get; private set; }
+        public int InitialTempo { get; private set; }
+        public bool HasTempoChanges { get; private set; }
+        public bool HasOtherMeter { get; private set; }
 
         private MidiSequence() { }
 
@@ -33,6 +38,7 @@ namespace ValeScore
                 throw new InvalidDataException("O arquivo MIDI deve ter entre 14 bytes e 8 MB.");
             var events = new List<MidiEvent>();
             long lastTick = 0;
+            bool otherMeter = false;
             int division, tracks;
             using (var reader = new BinaryReader(stream, Encoding.ASCII, true))
             {
@@ -52,13 +58,15 @@ namespace ValeScore
                     uint size = Number(reader, 4);
                     if (size > stream.Length - stream.Position) throw new InvalidDataException("Pista MIDI incompleta.");
                     if (chunk != "MTrk") { stream.Position += size; continue; }
-                    lastTick = Math.Max(lastTick, ReadTrack(reader.ReadBytes((int)size), events));
+                    lastTick = Math.Max(lastTick, ReadTrack(reader.ReadBytes((int)size), events, count, ref otherMeter));
                     count++;
                 }
                 if (count != tracks) throw new InvalidDataException("O arquivo tem pistas ausentes.");
             }
 
             int tempo = 500000;
+            int initialTempo = tempo;
+            bool tempoChanges = false;
             long previous = 0;
             double time = 0;
             var timed = new List<MidiEvent>();
@@ -66,7 +74,12 @@ namespace ValeScore
             {
                 time += (item.Tick - previous) * (double)tempo / (division * 1000000.0);
                 previous = item.Tick;
-                if (item.Tempo != 0) tempo = item.Tempo;
+                if (item.Tempo != 0)
+                {
+                    if (item.Tick == 0) initialTempo = item.Tempo;
+                    else if (tempo != item.Tempo) tempoChanges = true;
+                    tempo = item.Tempo;
+                }
                 else
                 {
                     item.Seconds = time;
@@ -75,10 +88,14 @@ namespace ValeScore
             }
             time += (lastTick - previous) * (double)tempo / (division * 1000000.0);
             if (time > 3600) throw new InvalidDataException("O limite de reprodução MIDI é de uma hora.");
-            return new MidiSequence { Events = timed.ToArray(), Duration = time, Tracks = tracks };
+            return new MidiSequence
+            {
+                Events = timed.ToArray(), Duration = time, Tracks = tracks, Division = division,
+                InitialTempo = initialTempo, HasTempoChanges = tempoChanges, HasOtherMeter = otherMeter
+            };
         }
 
-        private static long ReadTrack(byte[] data, List<MidiEvent> events)
+        private static long ReadTrack(byte[] data, List<MidiEvent> events, int track, ref bool otherMeter)
         {
             long tick = 0;
             int offset = 0, running = 0;
@@ -100,7 +117,7 @@ namespace ValeScore
                     int one = Byte(data, ref offset);
                     int two = kind == 0xC0 || kind == 0xD0 ? 0 : Byte(data, ref offset);
                     if (one > 127 || two > 127) throw new InvalidDataException("Evento MIDI inválido.");
-                    Add(events, new MidiEvent { Tick = tick, Status = status, Data1 = one, Data2 = two });
+                    Add(events, new MidiEvent { Tick = tick, Status = status, Data1 = one, Data2 = two, Track = track });
                     continue;
                 }
 
@@ -121,6 +138,11 @@ namespace ValeScore
                     int tempo = (data[offset] << 16) | (data[offset + 1] << 8) | data[offset + 2];
                     if (tempo == 0) throw new InvalidDataException("Andamento MIDI inválido.");
                     Add(events, new MidiEvent { Tick = tick, Tempo = tempo });
+                }
+                if (type == 0x58)
+                {
+                    if (size != 4) throw new InvalidDataException("Fórmula de compasso MIDI inválida.");
+                    otherMeter |= data[offset] != 4 || data[offset + 1] != 2;
                 }
                 offset += size;
             }

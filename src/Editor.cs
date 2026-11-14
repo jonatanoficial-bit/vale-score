@@ -83,6 +83,7 @@ namespace ValeScore
             Item(file, "Nova partitura", Keys.Control | Keys.N, () => New(false));
             Item(file, "Abrir…", Keys.Control | Keys.O, Open);
             Item(file, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
+            Item(file, "Importar MIDI como partitura…", Keys.Control | Keys.I, ImportMidiScore);
             Item(file, "Salvar", Keys.Control | Keys.S, () => Save(false));
             Item(file, "Salvar como…", Keys.Control | Keys.Shift | Keys.S, () => Save(true));
             file.DropDownItems.Add(new ToolStripSeparator());
@@ -122,6 +123,7 @@ namespace ValeScore
             header.Controls.Add(brand);
             header.Controls.Add(Button("Novo", () => New(false)));
             header.Controls.Add(Button("Abrir", Open));
+            header.Controls.Add(Button("Importar MIDI", ImportMidiScore));
             header.Controls.Add(Button("Salvar", () => Save(false)));
             undoButton = Button("Desfazer", () => History(undo, redo));
             redoButton = Button("Refazer", () => History(redo, undo));
@@ -623,7 +625,7 @@ namespace ValeScore
         private void ExportMidi() { Export("Arquivo MIDI (*.mid)|*.mid", MidiSequence.Export); }
         private void ExportMusicXml() { Export("MusicXML (*.musicxml)|*.musicxml", Output.MusicXml); }
         private void FocusWorkspace() { if (!editingLyric) ActiveControl = null; }
-        private bool Dirty() { return !score.Snapshot().SequenceEqual(saved); }
+        private bool Dirty() { return saved == null || !score.Snapshot().SequenceEqual(saved); }
         private void Report(string message) { status.Text = message; }
         private void Error(Exception ex) { Report(ex.Message); SystemSounds.Exclamation.Play(); }
 
@@ -1129,6 +1131,29 @@ namespace ValeScore
             int tone = pitch % 12;
             int step = Array.FindLastIndex(Score.Semitones, value => value <= tone);
             if (Put(octave * 7 + step, duration, tone - Score.Semitones[step])) AdvanceInput();
+        }
+
+        private void ImportMidiScore()
+        {
+            using (var dialog = new OpenFileDialog { Filter = "Arquivos MIDI (*.mid;*.midi)|*.mid;*.midi" })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    var sequence = MidiSequence.Open(dialog.FileName);
+                    var imported = MidiImport.Convert(sequence, Path.GetFileNameWithoutExtension(dialog.FileName));
+                    var decision = MessageBox.Show(this, imported.Report + Environment.NewLine + Environment.NewLine +
+                        "Abrir como um novo projeto editável?", "Importar MIDI", MessageBoxButtons.OKCancel, MessageBoxIcon.Information);
+                    if (decision != DialogResult.OK || !ConfirmLeave()) return;
+                    LoadScore(imported.Project, null);
+                    saved = null;
+                    loadedMidi = sequence;
+                    midiName = Path.GetFileName(dialog.FileName);
+                    RefreshView();
+                    Report(imported.Imported + " notas importadas · salve como projeto Vale Score");
+                }
+                catch (Exception ex) { MessageBox.Show(this, ex.Message, "Não foi possível importar o MIDI", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+            }
         }
 
         private void OpenMidi()

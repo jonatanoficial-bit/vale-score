@@ -35,6 +35,17 @@ internal static class Smoke
             var pitches = midi.Events.Where(e => (e.Status & 240) == 0x90 && e.Data2 != 0).ToArray();
             Assert(pitches.Length == score.Parts[0].Staves.Sum(lane => lane.Count(n => !n.IsRest)) &&
                 pitches.Any(e => e.Data1 == 60 && e.Seconds == 0), "MIDI exporta alturas e preserva pausas");
+            var imported = MidiImport.Convert(midi, "Prelúdio importado");
+            Assert(imported.Imported == pitches.Length && imported.Skipped == 0 && imported.Quantized == 0 &&
+                imported.Project.Bars == score.Bars && imported.Project.Tempo == score.Tempo,
+                "MIDI exportado reabre como partitura editável");
+            var converted = imported.Project.Parts.SelectMany(p => p.Staves).SelectMany(lane => lane).ToArray();
+            Assert(pitches.All(e => converted.Any(n => n.Midi == e.Data1 && n.Tick * 120 == e.Tick)),
+                "Conversão preserva alturas e posições na grade");
+            string importedPath = Path.Combine(directory, "importado.valescore");
+            imported.Project.Save(importedPath);
+            Assert(Score.Open(importedPath).Snapshot().SequenceEqual(imported.Project.Snapshot()),
+                "Partitura convertida pode ser salva e reaberta");
             using (var wave = Output.MidiWave(midi, System.Threading.CancellationToken.None))
                 Assert(wave.ToArray().Skip(44).Any(b => b != 0), "MIDI produz sinal no sintetizador interno");
             var track = new byte[] { 0, 0x90, 60, 80, 96, 60, 0, 0, 0xFF, 0x51, 3, 0x0F, 0x42, 0x40,

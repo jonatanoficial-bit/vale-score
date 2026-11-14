@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.4.0 · Prévia para Windows x64**
+**0.5.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.4.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.4.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.5.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.5.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -22,7 +22,7 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 
 A prévia suporta até 64 compassos em 4/4, uma linha melódica e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
 
-A abertura de MIDI é para reprodução. Conversão de MIDI em partitura, gravação em tempo real e suporte a VST ficam para etapas posteriores. O som interno de arquivos MIDI usa um timbre simples, lê andamento e pedal e tem limite de 10 minutos. A saída MIDI do Windows permite usar os timbres do dispositivo selecionado.
+Use **Importar MIDI** ou **Ctrl+I** para criar um projeto editável. A conversão usa semicolcheias, 4/4 e andamento inicial, e distribui as notas em até quatro pianos com uma voz por pauta. O aplicativo informa ajustes e omissões. O MIDI original fica disponível em **Reprodução → Tocar ou parar MIDI aberto**. O som interno de arquivos MIDI usa um timbre simples, lê andamento e pedal e tem limite de 10 minutos. A saída MIDI do Windows permite usar os timbres do dispositivo selecionado.
 
 ## Compilar e testar
 
