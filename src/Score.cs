@@ -38,7 +38,7 @@ namespace ValeScore
     {
         public const int BarTicks = 16;
         public const int MaxBars = 64;
-        public const int CurrentVersion = 3;
+        public const int CurrentVersion = 4;
         public const int MaxLyricLength = 24;
         public static readonly int[] Durations = { 16, 8, 4, 2, 1 };
         public static readonly string[] Steps = { "C", "D", "E", "F", "G", "A", "B" };
@@ -144,7 +144,7 @@ namespace ValeScore
         private static bool ValidNote(Note n)
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 ||
-                !Durations.Contains(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
+                !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
             if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter;
             return n.Step >= 0 && n.Step <= 69 && n.Alter >= -1 && n.Alter <= 1 && n.Midi >= 0 && n.Midi <= 127;
         }
@@ -152,6 +152,47 @@ namespace ValeScore
         public static int RestLength(int tick, int remaining)
         {
             return Durations.First(d => d <= remaining && tick % d == 0);
+        }
+
+        public static int BaseDuration(int length)
+        {
+            if (length == 3 || length == 6 || length == 12) return length * 2 / 3;
+            if (length == 7 || length == 14) return length * 4 / 7;
+            return length;
+        }
+
+        public static int DotCount(int length)
+        {
+            int basis = BaseDuration(length);
+            return length == basis ? 0 : length * 2 == basis * 3 ? 1 : 2;
+        }
+
+        public static bool IsSupportedDuration(int length)
+        {
+            return Durations.Contains(BaseDuration(length));
+        }
+
+        public void InsertBar(int bar)
+        {
+            if (bar < 0 || bar > Bars) throw new ArgumentOutOfRangeException("bar");
+            if (Bars >= MaxBars) throw new InvalidOperationException("Limite de compassos atingido.");
+            foreach (var note in Parts.SelectMany(p => p.Staves).SelectMany(staff => staff))
+                if (note.Tick >= bar * BarTicks) note.Tick += BarTicks;
+            Bars++;
+        }
+
+        public void RemoveBar(int bar)
+        {
+            if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
+            if (Bars == 1) throw new InvalidOperationException("A partitura precisa ter pelo menos um compasso.");
+            int end = (bar + 1) * BarTicks;
+            foreach (var staff in Parts.SelectMany(p => p.Staves))
+            {
+                staff.RemoveAll(note => note.Tick >= end - BarTicks && note.Tick < end);
+                foreach (var note in staff)
+                    if (note.Tick >= end) note.Tick -= BarTicks;
+            }
+            Bars--;
         }
 
         public int Transpose(int startBar, int endBar, int? partIndex, int amount, bool chromatic)
@@ -212,6 +253,42 @@ namespace ValeScore
                 staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
             }
             Bars++;
+        }
+
+        public Score CopyBar(int bar)
+        {
+            if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
+            var copy = Restore(Snapshot());
+            int start = bar * BarTicks;
+            foreach (var staff in copy.Parts.SelectMany(p => p.Staves))
+            {
+                staff.RemoveAll(n => n.Tick < start || n.Tick >= start + BarTicks);
+                foreach (var note in staff) note.Tick -= start;
+            }
+            copy.Bars = 1;
+            return copy;
+        }
+
+        public void PasteBar(int bar, Score copy)
+        {
+            if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
+            copy.Validate();
+            if (copy.Bars != 1 || !Parts.Select(p => p.Staves.Count).SequenceEqual(copy.Parts.Select(p => p.Staves.Count)))
+                throw new InvalidOperationException("O compasso copiado precisa ter o mesmo conjunto de pautas.");
+            var sources = copy.Parts.SelectMany(p => p.Staves).ToArray();
+            var targets = Parts.SelectMany(p => p.Staves).ToArray();
+            int start = bar * BarTicks;
+            for (int i = 0; i < targets.Length; i++)
+            {
+                var staff = targets[i];
+                staff.RemoveAll(n => n.Tick >= start && n.Tick < start + BarTicks);
+                staff.AddRange(sources[i].Select(n => new Note
+                {
+                    Tick = start + n.Tick, Length = n.Length, Step = n.Step, Alter = n.Alter,
+                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter
+                }));
+                staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+            }
         }
 
         public Score ExtractPart(int index)
@@ -289,7 +366,7 @@ namespace ValeScore
                 {
                     var score = (Score)Serializer.ReadObject(stream);
                     if (score == null) throw new InvalidDataException("Projeto vazio.");
-                    if (score.Version == 1 || score.Version == 2) score.Version = CurrentVersion;
+                    if (score.Version >= 1 && score.Version <= 3) score.Version = CurrentVersion;
                     score.Validate();
                     return score;
                 }

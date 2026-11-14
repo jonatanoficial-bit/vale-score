@@ -26,6 +26,50 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var interchange = Score.New(false);
+        interchange.Put(0, 0, 0, 7, 28, 1);
+        interchange.SetLyric(0, 0, 0, "céu", false);
+        interchange.PutRest(0, 0, 7, 3);
+        interchange.Put(0, 1, 16, 12, 21, 0);
+        var preserved = interchange.Snapshot();
+        interchange.InsertBar(1);
+        Assert(interchange.Bars == 5 && interchange.Parts[0].Staves[1][0].Tick == 32, "Inserção desloca o compasso posterior");
+        interchange.RemoveBar(1);
+        Assert(interchange.Snapshot().SequenceEqual(preserved), "Remover o compasso inserido restaura o projeto");
+        var copied = interchange.CopyBar(0);
+        var destination = Score.Restore(preserved);
+        destination.PasteBar(2, copied);
+        destination.Validate();
+        var pasted = destination.Parts[0].Staves[0].First(n => n.Tick == 32);
+        Assert(pasted.Length == 7 && pasted.Lyric == "céu" && pasted.Id != interchange.Parts[0].Staves[0][0].Id,
+            "Copiar e colar compasso preserva pontos e letras com novos IDs");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(interchange, xml);
+            xml.Position = 0;
+            var written = XDocument.Load(xml);
+            var notes = written.Descendants("note").ToArray();
+            Assert(notes[0].Elements("dot").Count() == 2 && notes[1].Elements("dot").Count() == 1,
+                "MusicXML distingue nota duplamente pontuada e pausa pontuada");
+            xml.Position = 0;
+            var result = MusicXmlImport.Read(xml, "Teste");
+            var lanes = result.Project.Parts[0].Staves;
+            Assert(result.Notes == 2 && result.Omitted == 0 && lanes[0][0].Length == 7 &&
+                lanes[0][0].Midi == 61 && lanes[0][0].Lyric == "céu" && lanes[0][1].Length == 3 &&
+                lanes[1].Any(n => !n.IsRest && n.Tick == 16 && n.Length == 12),
+                "MusicXML reabre notas, letras, alturas e duas pautas");
+        }
+        string mxlPath = Path.Combine(directory, "intercambio.mxl");
+        using (var mxl = File.Create(mxlPath)) Output.CompressedMusicXml(interchange, mxl);
+        Assert(MusicXmlImport.Open(mxlPath).Notes == 2, "MXL exportado reabre pelo manifesto");
+        bool unsafeXml = false;
+        using (var external = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(
+            "<!DOCTYPE score-partwise [<!ENTITY externo SYSTEM 'file:///C:/Windows/win.ini'>]><score-partwise>&externo;</score-partwise>")))
+        {
+            try { MusicXmlImport.Read(external, "Entidade"); }
+            catch (System.Xml.XmlException) { unsafeXml = true; }
+        }
+        Assert(unsafeXml, "Importação bloqueia resolução de entidades externas");
         var revised = Score.New(true);
         var firstNote = revised.Parts[0].Staves[0][0];
         var originalId = firstNote.Id;
@@ -226,6 +270,7 @@ internal static class Smoke
             var noteButtons = (System.Collections.Generic.List<Button>)type.GetField("durationButtons", flags).GetValue(editor);
             var pauseButtons = (System.Collections.Generic.List<Button>)type.GetField("restButtons", flags).GetValue(editor);
             var signs = (System.Collections.Generic.List<Button>)type.GetField("accidentalButtons", flags).GetValue(editor);
+            var dots = (Button)type.GetField("dotButton", flags).GetValue(editor);
             Assert(noteButtons.Count == 5 && pauseButtons.Count == 5 && signs.Count == 3 &&
                 noteButtons.Concat(pauseButtons).Concat(signs).All(b => b.Text.Length == 0 && !string.IsNullOrWhiteSpace(b.AccessibleName)),
                 "Paleta tem 13 símbolos com nomes acessíveis");
@@ -294,6 +339,10 @@ internal static class Smoke
             key(Keys.V);
             key(Keys.D4);
             Assert(first().Length == 2, "A figura altera a duração da nota selecionada");
+            dots.PerformClick();
+            Assert(first().Length == 3, "Botão de ponto aumenta a colcheia selecionada");
+            dots.PerformClick();
+            Assert(first().Length == 2, "Clicar novamente retira o ponto de aumento");
             key(Keys.E);
             click(new Point(notePoint.X, notePoint.Y - 29));
             Assert(first() != null, "Borracha exige clique próximo ao símbolo");

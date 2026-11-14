@@ -25,6 +25,18 @@ namespace ValeScore
             }
         }
 
+        public static void CompressedMusicXml(Score score, Stream target)
+        {
+            using (var archive = new System.IO.Compression.ZipArchive(target, System.IO.Compression.ZipArchiveMode.Create, true))
+            {
+                using (var mime = new StreamWriter(archive.CreateEntry("mimetype", System.IO.Compression.CompressionLevel.NoCompression).Open(), new UTF8Encoding(false)))
+                    mime.Write("application/vnd.recordare.musicxml");
+                using (var manifest = new StreamWriter(archive.CreateEntry("META-INF/container.xml").Open(), new UTF8Encoding(false)))
+                    manifest.Write("<container><rootfiles><rootfile full-path=\"score.musicxml\" media-type=\"application/vnd.recordare.musicxml+xml\"/></rootfiles></container>");
+                using (var document = archive.CreateEntry("score.musicxml").Open()) MusicXml(score, document);
+            }
+        }
+
         public const int SampleRate = 22050;
         public static MemoryStream Wave(Score score)
         {
@@ -280,7 +292,8 @@ namespace ValeScore
             }
             xml.WriteElementString("duration", length.ToString());
             xml.WriteElementString("voice", (staff + 1).ToString());
-            xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, length)]);
+            xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, Score.BaseDuration(length))]);
+            for (int i = 0; i < Score.DotCount(length); i++) xml.WriteElementString("dot", "");
             if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
             if (beam != null)
             {

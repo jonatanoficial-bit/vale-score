@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.6.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.7.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -44,7 +44,7 @@ Base da matriz: prévia 0.6.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 02.04 | Inserção de notas em diferentes vozes | Pendente | |
 | 02.05 | Modo de inserção que desloca conteúdo rítmico | Pendente | |
 | 02.06 | Seleção, filtros avançados e edição em massa | Pendente | |
-| 02.07 | Copiar, colar, duplicar e colagem múltipla | Pendente | |
+| 02.07 | Copiar, colar, duplicar e colagem múltipla | Parcial | [Teste de cópia e colagem de um compasso](tests/Smoke.cs). Seleção de trechos e colagem múltipla pendentes. |
 | 02.08 | Transposição cromática, diatônica e por intervalo | Parcial | [Testes](tests/Smoke.cs) de transposição por semitons e graus naturais. |
 | 02.09 | Inversão, retrogradação e transformações musicais | Pendente | |
 | 02.10 | Redução e expansão de material entre pautas | Pendente | |
@@ -59,7 +59,7 @@ Base da matriz: prévia 0.6.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
 | 03.01 | Figuras e pausas de valores longos e muito curtos | Parcial | |
-| 03.02 | Notas pontuadas, duplamente e triplamente pontuadas | Pendente | |
+| 03.02 | Notas pontuadas, duplamente e triplamente pontuadas | Parcial | [Teste do editor e do MusicXML](tests/Smoke.cs). Um e dois pontos conforme a grade. Triplo ponto pendente. |
 | 03.03 | Anacruse e compassos incompletos | Pendente | |
 | 03.04 | Fórmulas de compasso simples e compostas | Parcial | |
 | 03.05 | Fórmulas irregulares e alternadas | Pendente | |
@@ -221,7 +221,7 @@ Base da matriz: prévia 0.6.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
-| 12.01 | Importação de MusicXML | Pendente | |
+| 12.01 | Importação de MusicXML | Parcial | [Testes MusicXML e MXL](tests/Smoke.cs). Cobertura de 4/4, até quatro partes, duas pautas e uma voz por pauta. |
 | 12.02 | Exportação de MusicXML | Parcial | |
 | 12.03 | Importação de MIDI | Parcial | [Suíte Windows](tests/Smoke.cs). Conversão em grade fixa. Métrica variável, percussão e vozes independentes pendentes. |
 | 12.04 | Exportação de MIDI | Parcial | |

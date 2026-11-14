@@ -38,6 +38,7 @@ namespace ValeScore
         private readonly List<Button> durationButtons = new List<Button>();
         private readonly List<Button> restButtons = new List<Button>();
         private readonly List<Button> accidentalButtons = new List<Button>();
+        private readonly Button dotButton, doubleDotButton;
         private readonly Dictionary<EditMode, Button> modeButtons = new Dictionary<EditMode, Button>();
         private readonly ToolTip figureTips = new ToolTip();
         private readonly ComboBox zoom = new ComboBox();
@@ -48,6 +49,7 @@ namespace ValeScore
         private readonly Recovery recovery = new Recovery(Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ValeScore", "Recuperacao"));
         private byte[] recoverySnapshot;
+        private Score copiedBar;
         private readonly Stopwatch clock = new Stopwatch();
         private MemoryStream playback;
         private SoundPlayer player;
@@ -89,11 +91,13 @@ namespace ValeScore
             Item(file, "Recuperar projeto…", Keys.None, Recover);
             Item(file, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
             Item(file, "Importar MIDI como partitura…", Keys.Control | Keys.I, ImportMidiScore);
+            Item(file, "Importar MusicXML ou MXL…", Keys.None, ImportMusicXml);
             Item(file, "Salvar", Keys.Control | Keys.S, () => Save(false));
             Item(file, "Salvar como…", Keys.Control | Keys.Shift | Keys.S, () => Save(true));
             file.DropDownItems.Add(new ToolStripSeparator());
             Item(file, "Exportar MIDI…", Keys.None, ExportMidi);
             Item(file, "Exportar MusicXML…", Keys.None, ExportMusicXml);
+            Item(file, "Exportar MusicXML compactado…", Keys.None, ExportMxl);
             Item(file, "Exportar WAV…", Keys.None, ExportWave);
             Item(file, "Exportar página como PNG…", Keys.None, ExportPng);
             Item(file, "Imprimir / PDF…", Keys.Control | Keys.P, Print);
@@ -106,6 +110,10 @@ namespace ValeScore
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
             Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
+            Item(edit, "Copiar compasso atual", Keys.Control | Keys.Shift | Keys.C, CopyCurrentBar);
+            Item(edit, "Colar no compasso atual", Keys.Control | Keys.Shift | Keys.V, PasteCurrentBar);
+            Item(edit, "Inserir compasso antes do atual", Keys.None, InsertCurrentBar);
+            Item(edit, "Remover compasso atual…", Keys.None, RemoveCurrentBar);
             Item(edit, "Ir para compasso…", Keys.Control | Keys.G, GoToBar);
             Item(edit, "Transpor…", Keys.Control | Keys.T, TransposeRange);
             var help = new ToolStripMenuItem("Ajuda");
@@ -145,6 +153,7 @@ namespace ValeScore
             exportMenu.Renderer = new DarkMenu();
             AddExportItem("MIDI  ·  .mid", ExportMidi);
             AddExportItem("MusicXML  ·  .musicxml", ExportMusicXml);
+            AddExportItem("MusicXML compactado  ·  .mxl", ExportMxl);
             AddExportItem("Instrumento selecionado  ·  MusicXML", ExportPart);
             AddExportItem("Áudio  ·  .wav", ExportWave);
             AddExportItem("Página atual  ·  .png", ExportPng);
@@ -229,6 +238,15 @@ namespace ValeScore
                 AddMusicButton(alterations, button, names[i], () => ChooseAccidental(alter));
                 accidentalButtons.Add(button);
             }
+            var dots = AddPaletteGroup("PONTOS", 2);
+            dotButton = new MusicButton((g, ink) => g.FillEllipse(ink, -2.4f, -2.4f, 4.8f, 4.8f));
+            doubleDotButton = new MusicButton((g, ink) =>
+            {
+                g.FillEllipse(ink, -6, -2.4f, 4.8f, 4.8f);
+                g.FillEllipse(ink, 1.2f, -2.4f, 4.8f, 4.8f);
+            });
+            AddMusicButton(dots, (MusicButton)dotButton, "Ponto de aumento (.)", () => ApplyDots(1));
+            AddMusicButton(dots, (MusicButton)doubleDotButton, "Dois pontos de aumento", () => ApplyDots(2));
             Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); recoveryTimer.Dispose(); };
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
@@ -644,6 +662,7 @@ namespace ValeScore
         }
         private void ExportMidi() { Export("Arquivo MIDI (*.mid)|*.mid", MidiSequence.Export); }
         private void ExportMusicXml() { Export("MusicXML (*.musicxml)|*.musicxml", Output.MusicXml); }
+        private void ExportMxl() { Export("MusicXML compactado (*.mxl)|*.mxl", Output.CompressedMusicXml); }
         private void ExportPart()
         {
             Export("Parte MusicXML (*.musicxml)|*.musicxml", (model, output) =>
@@ -736,7 +755,8 @@ namespace ValeScore
             string altered = note == null || note.Alter == 0 ? "" : note.Alter > 0 ? "♯" : "♭";
             selection.Text = "Compasso " + (position.Tick / 16 + 1) + "  ·  " + (position.Tick % 16 + 1) + "/16\n"
                 + (selected != null && selected.IsRest ? "Pausa" : Score.Names[step % 7] + altered + (step / 7))
-                + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, selected.Length)])
+                + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, Score.BaseDuration(selected.Length))]
+                    + new string('·', Score.DotCount(selected.Length)))
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
             bool dirty = Dirty();
             Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
@@ -816,10 +836,12 @@ namespace ValeScore
             bool rest = showingSelection ? selected.IsRest : mode == EditMode.Rest;
             for (int i = 0; i < durationButtons.Count; i++)
             {
-                bool same = Score.Durations[i] == active;
+                bool same = Score.Durations[i] == Score.BaseDuration(active);
                 durationButtons[i].BackColor = !rest && same ? Accent : PanelColor;
                 restButtons[i].BackColor = rest && same ? Accent : PanelColor;
             }
+            dotButton.BackColor = Score.DotCount(active) == 1 ? Accent : PanelColor;
+            doubleDotButton.BackColor = Score.DotCount(active) == 2 ? Accent : PanelColor;
             int accidental = showingSelection && !selected.IsRest ? selected.Alter : inputAlter;
             for (int i = 0; i < accidentalButtons.Count; i++)
                 accidentalButtons[i].BackColor = !rest && i == accidental + 1 ? Accent : PanelColor;
@@ -841,6 +863,30 @@ namespace ValeScore
             var tool = rest ? EditMode.Rest : EditMode.Write;
             if (mode != tool) SetMode(tool);
             SetDuration(value);
+        }
+
+        private void ApplyDots(int count)
+        {
+            if (!CommitLyric()) return;
+            var selected = SelectedEvent();
+            bool editing = mode == EditMode.Select && selected != null;
+            int active = editing ? selected.Length : duration;
+            int basis = Score.BaseDuration(active);
+            int numerator = count == 1 ? 3 : 7;
+            int denominator = count == 1 ? 2 : 4;
+            bool clearing = Score.DotCount(active) == count;
+            int length = clearing ? basis : basis * numerator / denominator;
+            if (!clearing && (basis * numerator % denominator != 0 || length > Score.BarTicks))
+            {
+                Report("O ponto não cabe na grade rítmica desta figura.");
+                return;
+            }
+            if (editing)
+            {
+                if (selected.IsRest) PutRest(length);
+                else Put(selected.Step, length, selected.Alter);
+            }
+            else SetDuration(length);
         }
 
         private bool Put(int step, int length, int? alteration = null)
@@ -906,6 +952,37 @@ namespace ValeScore
             if (!CommitLyric()) return;
             int bar = position.Tick / Score.BarTicks;
             if (Change(() => score.DuplicateBar(bar))) SelectBar(bar + 1);
+        }
+
+        private void InsertCurrentBar()
+        {
+            if (!CommitLyric()) return;
+            int bar = position.Tick / Score.BarTicks;
+            if (Change(() => score.InsertBar(bar))) SelectBar(bar);
+        }
+
+        private void CopyCurrentBar()
+        {
+            if (!CommitLyric()) return;
+            copiedBar = score.CopyBar(position.Tick / Score.BarTicks);
+            Report("Compasso copiado. Ctrl+Shift+V cola nas pautas do compasso atual.");
+        }
+
+        private void PasteCurrentBar()
+        {
+            if (!CommitLyric()) return;
+            if (copiedBar == null) { Report("Copie um compasso primeiro."); return; }
+            if (Change(() => score.PasteBar(position.Tick / Score.BarTicks, copiedBar)))
+                Report("Compasso colado. Ctrl+Z desfaz.");
+        }
+
+        private void RemoveCurrentBar()
+        {
+            if (!CommitLyric()) return;
+            int bar = position.Tick / Score.BarTicks;
+            if (MessageBox.Show(this, "Remover o compasso " + (bar + 1) + " de todas as pautas? Ctrl+Z desfaz.",
+                "Remover compasso", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
+            if (Change(() => score.RemoveBar(bar))) SelectBar(Math.Min(bar, score.Bars - 1));
         }
 
         private void TransposeRange()
@@ -975,6 +1052,7 @@ namespace ValeScore
                 return true;
             }
             if (key == Keys.Delete) { RemoveNote(); return true; }
+            if (key == Keys.OemPeriod || key == Keys.Decimal) { ApplyDots(1); return true; }
             if (key == Keys.Left || key == Keys.Right)
             {
                 int direction = key == Keys.Right ? 1 : -1;
@@ -1048,13 +1126,46 @@ namespace ValeScore
         }
         private void Open()
         {
-            if (!ConfirmLeave()) return;
-            using (var dialog = new OpenFileDialog { Filter = "Projeto Vale Score (*.valescore)|*.valescore" })
+            using (var dialog = new OpenFileDialog { Filter = "Partituras (*.valescore;*.musicxml;*.mxl;*.xml)|*.valescore;*.musicxml;*.mxl;*.xml|Projeto Vale Score (*.valescore)|*.valescore|MusicXML (*.musicxml;*.mxl;*.xml)|*.musicxml;*.mxl;*.xml" })
             {
                 if (dialog.ShowDialog(this) != DialogResult.OK) return;
-                try { LoadScore(Score.Open(dialog.FileName), dialog.FileName); Report("Projeto aberto"); }
+                try
+                {
+                    if (!string.Equals(Path.GetExtension(dialog.FileName), ".valescore", StringComparison.OrdinalIgnoreCase))
+                    {
+                        OpenMusicXmlProject(dialog.FileName);
+                        return;
+                    }
+                    var model = Score.Open(dialog.FileName);
+                    if (!ConfirmLeave()) return;
+                    LoadScore(model, dialog.FileName);
+                    Report("Projeto aberto");
+                }
                 catch (Exception ex) { MessageBox.Show(this, ex.Message, "Não foi possível abrir", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
             }
+        }
+
+        private void ImportMusicXml()
+        {
+            using (var dialog = new OpenFileDialog { Filter = "MusicXML (*.musicxml;*.mxl;*.xml)|*.musicxml;*.mxl;*.xml" })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                try { OpenMusicXmlProject(dialog.FileName); }
+                catch (Exception ex) { MessageBox.Show(this, ex.Message, "Importação MusicXML", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+            }
+        }
+
+        private void OpenMusicXmlProject(string file)
+        {
+            var imported = MusicXmlImport.Open(file);
+            if (MessageBox.Show(this, imported.Report + Environment.NewLine + Environment.NewLine +
+                "Abrir a partitura convertida?", "Importação MusicXML", MessageBoxButtons.OKCancel, MessageBoxIcon.Information) != DialogResult.OK ||
+                !ConfirmLeave()) return;
+            LoadScore(imported.Project, null);
+            saved = null;
+            SaveRecovery();
+            RefreshView();
+            Report("MusicXML importado. Salve como projeto Vale Score.");
         }
 
         private void SaveRecovery()

@@ -229,7 +229,7 @@ namespace ValeScore
                                         var measure = layout.MeasureOf(hover.Tick / 16);
                                         x = measure.Left + measure.Width / 2;
                                     }
-                                    MusicGlyphs.Rest(g, ghost, x, y, previewLength);
+                                    DrawRest(g, ghost, x, y, previewLength);
                                 }
                                 else
                                 {
@@ -368,7 +368,7 @@ namespace ValeScore
                     var n = events[i];
                     var color = n.Tick == selected || (!n.IsRest && playing >= n.Tick && playing < n.Tick + n.Length) ? accent : ink;
                     float x = EventX(measure, n);
-                    if (n.IsRest) MusicGlyphs.Rest(g, color, x, top, n.Length);
+                    if (n.IsRest) DrawRest(g, color, x, top, n.Length);
                     else
                     {
                         int prior;
@@ -410,6 +410,17 @@ namespace ValeScore
             }
         }
 
+        private static void DrawRest(Graphics g, Brush brush, float x, int top, int length)
+        {
+            MusicGlyphs.Rest(g, brush, x, top, Score.BaseDuration(length));
+            DrawDots(g, brush, x, top + 15, length);
+        }
+
+        private static void DrawDots(Graphics g, Brush brush, float x, float y, int length)
+        {
+            for (int i = 0; i < Score.DotCount(length); i++) g.FillEllipse(brush, x + 8 + i * 4.7f, y - 1.65f, 3.3f, 3.3f);
+        }
+
         private static void DrawNote(Graphics g, Brush brush, Pen pen, float x, int top, int step, int length, int alter, bool accidental,
             int beamDirection = 0, float? beamY = null)
         {
@@ -417,6 +428,8 @@ namespace ValeScore
             for (int ledger = -2; ledger >= step; ledger -= 2) g.DrawLine(pen, x - 9, top + 40 - ledger * 5, x + 9, top + 40 - ledger * 5);
             for (int ledger = 10; ledger <= step; ledger += 2) g.DrawLine(pen, x - 9, top + 40 - ledger * 5, x + 9, top + 40 - ledger * 5);
             if (accidental) MusicGlyphs.Accidental(g, brush, x - 14, y, alter);
+            DrawDots(g, brush, x, y - (step % 2 == 0 ? 5 : 0), length);
+            length = Score.BaseDuration(length);
             MusicGlyphs.Head(g, brush, x, y, length);
             if (length == 16) return;
             int direction = beamDirection != 0 ? beamDirection : step < 4 ? -1 : 1;

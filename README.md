@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.6.0 · Prévia para Windows x64**
+**0.7.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.6.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.6.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.7.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.7.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -34,6 +34,14 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
 
+## Novidades da 0.7
+
+- **Arquivo → Importar MusicXML ou MXL** abre partituras editáveis com relatório. A prévia aceita score-partwise em 4/4 com até quatro partes, duas pautas por parte e uma voz por pauta. Acordes e outras vozes simultâneas podem ser omitidos. O arquivo original fica intacto.
+- **Exportar → MusicXML compactado** gera um arquivo MXL interoperável com leitores que implementam o [contêiner MusicXML](https://www.w3.org/2021/06/musicxml40/tutorial/compressed-mxl-files/).
+- A paleta **Pontos** aplica ou retira um ou dois pontos em notas e pausas quando a duração cabe na grade. Para um ponto, também vale a tecla de ponto.
+- O menu **Editar** insere ou remove compassos e copia ou cola o conteúdo de um compasso nas pautas correspondentes. **Ctrl+Shift+C** copia, **Ctrl+Shift+V** cola substituindo o conteúdo do compasso atual e **Ctrl+Z** desfaz. A cópia permanece disponível durante a sessão.
+- O esquema nativo 4 acrescenta figuras pontuadas. Projetos dos esquemas 1, 2 e 3 abrem normalmente na 0.7.
+
 ## Novidades da 0.6
 
 - **Ctrl+G** navega por número de compasso.
@@ -45,4 +53,4 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `3`. A versão 0.3 abre projetos dos esquemas 1 e 2 e grava no esquema 3. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+JSON UTF-8, versão de esquema `4`. A versão 0.7 abre projetos dos esquemas 1 a 3 e grava no esquema 4. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.

@@ -100,6 +100,7 @@ namespace ValeScore
             int start = bar * Score.BarTicks;
             var halfWidths = new float[Score.BarTicks];
             var alterations = new bool[Score.BarTicks];
+            var dots = new int[Score.BarTicks];
             var links = new List<Tuple<int, float>>[Score.BarTicks];
             foreach (var lane in lanes)
             {
@@ -108,6 +109,10 @@ namespace ValeScore
                 var accidentals = new Dictionary<int, int>();
                 foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + Score.BarTicks))
                 {
+                    int origin = note.Tick - start;
+                    int dotCount = Score.DotCount(note.Length);
+                    if (dotCount > 0 && origin + 1 < Score.BarTicks)
+                        dots[origin + 1] = Math.Max(dots[origin + 1], dotCount);
                     if (note.IsRest) continue;
                     int unit = note.Tick - start;
                     int alter;
@@ -131,7 +136,7 @@ namespace ValeScore
             float end = 0;
             for (int unit = 0; unit < offsets.Length; unit++)
             {
-                float gap = alterations[unit] ? 22 : 11.2f;
+                float gap = (alterations[unit] ? 22 : 11.2f) + dots[unit] * 4.5f;
                 float left = unit == 0 ? Math.Max(19, gap) : offsets[unit - 1] + gap;
                 left = Math.Max(left, halfWidths[unit] + 8);
                 if (links[unit] != null)
