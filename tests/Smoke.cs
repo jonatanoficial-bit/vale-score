@@ -26,6 +26,47 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var revised = Score.New(true);
+        var firstNote = revised.Parts[0].Staves[0][0];
+        var originalId = firstNote.Id;
+        Assert(revised.Transpose(0, 0, 0, 1, true) > 0 && firstNote.Midi == 61 && firstNote.Id == originalId &&
+            firstNote.Lyric == "O" && revised.Parts[0].Staves[0].First(n => n.Tick == 16).Midi == 69,
+            "Transposição cromática preserva letra, identidade e compassos fora do intervalo");
+        revised.Transpose(0, 0, 0, 1, false);
+        Assert(firstNote.Step == 29 && firstNote.Alter == 1, "Transposição diatônica desloca o grau e conserva a alteração");
+        var initial = revised.Snapshot();
+        bool rejectedTranspose = false;
+        try { revised.Transpose(0, 0, null, 24, true); }
+        catch (InvalidOperationException) { rejectedTranspose = true; }
+        Assert(rejectedTranspose && initial.SequenceEqual(revised.Snapshot()), "Transposição fora da extensão não altera o projeto");
+        revised.DuplicateBar(0);
+        revised.Validate();
+        var duplicate = revised.Parts[0].Staves[0].First(n => n.Tick == 16);
+        Assert(revised.Bars == 5 && duplicate.Id != originalId && duplicate.Midi == firstNote.Midi && duplicate.Lyric == "O",
+            "Duplicar compasso desloca o material posterior e gera novas identidades");
+        revised.AddPart("Violão");
+        var extracted = revised.ExtractPart(0);
+        Assert(extracted.Parts.Count == 1 && extracted.Parts[0].Staves.Count == 2 &&
+            extracted.Parts[0].Staves[0][0].Id == originalId && revised.Parts.Count == 2,
+            "Extração mantém as pautas e o conteúdo do instrumento em uma cópia independente");
+        var service = new Recovery(Path.Combine(directory, "recovery-" + Guid.NewGuid().ToString("N")));
+        service.Save(revised);
+        string copy = Directory.GetFiles(service.Folder).Single();
+        Assert(service.HasCopies() && Score.Open(copy).Snapshot().SequenceEqual(revised.Snapshot()), "Cópia de recuperação reabre integralmente");
+        revised.Title = "Segunda revisão";
+        service.Save(revised);
+        Assert(Directory.GetFiles(service.Folder).Length == 1 && Score.Open(copy).Title == revised.Title, "Cópia da sessão é atualizada");
+        service.Clear();
+        Assert(!service.HasCopies(), "Salvamento normal remove a cópia da sessão");
+        Directory.Delete(service.Folder);
+        using (var png = new MemoryStream())
+        {
+            Output.PagePng(revised, new ScoreLayout(revised), 0, png);
+            png.Position = 0;
+            using (var image = new Bitmap(png))
+                Assert(image.Width == 1560 && image.Height == 2200 && image.GetPixel(800, 368).R < 180,
+                    "PNG exporta fundo, pauta e dimensões da página");
+        }
         using (var buffer = new MemoryStream())
         {
             MidiSequence.Export(score, buffer);

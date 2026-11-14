@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.5.0 · Prévia para Windows x64**
+**0.6.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.5.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.5.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.6.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.6.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -33,6 +33,15 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.6
+
+- **Ctrl+G** navega por número de compasso.
+- **Ctrl+D** duplica o compasso atual em todas as pautas e desloca o material posterior.
+- **Ctrl+T** transpõe um trecho por semitons ou graus. A opção diatônica usa graus naturais e conserva o acidente original.
+- **Exportar → Instrumento selecionado** gera um MusicXML apenas com o instrumento ativo, incluindo todas as suas pautas.
+- **Exportar → Página atual** gera um PNG de 1560 × 2200 pixels.
+- A recuperação grava uma cópia dos projetos editados a cada 12 segundos se houver mudanças. Após uma interrupção, use **Arquivo → Recuperar projeto**. Salvar ou fechar normalmente limpa a cópia da sessão.
 
 ## Formato de projeto
 

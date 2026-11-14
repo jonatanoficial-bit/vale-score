@@ -44,6 +44,10 @@ namespace ValeScore
         private readonly LyricEntry lyricEntry = new LyricEntry();
         private readonly Stack<byte[]> undo = new Stack<byte[]>(), redo = new Stack<byte[]>();
         private readonly Timer timer = new Timer { Interval = 33 };
+        private readonly Timer recoveryTimer = new Timer { Interval = 12000 };
+        private readonly Recovery recovery = new Recovery(Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ValeScore", "Recuperacao"));
+        private byte[] recoverySnapshot;
         private readonly Stopwatch clock = new Stopwatch();
         private MemoryStream playback;
         private SoundPlayer player;
@@ -82,6 +86,7 @@ namespace ValeScore
             var file = new ToolStripMenuItem("Arquivo");
             Item(file, "Nova partitura", Keys.Control | Keys.N, () => New(false));
             Item(file, "Abrir…", Keys.Control | Keys.O, Open);
+            Item(file, "Recuperar projeto…", Keys.None, Recover);
             Item(file, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
             Item(file, "Importar MIDI como partitura…", Keys.Control | Keys.I, ImportMidiScore);
             Item(file, "Salvar", Keys.Control | Keys.S, () => Save(false));
@@ -90,6 +95,7 @@ namespace ValeScore
             Item(file, "Exportar MIDI…", Keys.None, ExportMidi);
             Item(file, "Exportar MusicXML…", Keys.None, ExportMusicXml);
             Item(file, "Exportar WAV…", Keys.None, ExportWave);
+            Item(file, "Exportar página como PNG…", Keys.None, ExportPng);
             Item(file, "Imprimir / PDF…", Keys.Control | Keys.P, Print);
             Item(file, "Abrir partitura de exemplo", Keys.None, () => New(true));
             var edit = new ToolStripMenuItem("Editar");
@@ -99,6 +105,9 @@ namespace ValeScore
             Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
+            Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
+            Item(edit, "Ir para compasso…", Keys.Control | Keys.G, GoToBar);
+            Item(edit, "Transpor…", Keys.Control | Keys.T, TransposeRange);
             var help = new ToolStripMenuItem("Ajuda");
             Item(help, "Atalhos de edição", Keys.F1, () => MessageBox.Show(this,
                 "V seleciona, N escreve notas, R escreve pausas e E apaga. Esc volta à seleção.\n" +
@@ -136,7 +145,9 @@ namespace ValeScore
             exportMenu.Renderer = new DarkMenu();
             AddExportItem("MIDI  ·  .mid", ExportMidi);
             AddExportItem("MusicXML  ·  .musicxml", ExportMusicXml);
+            AddExportItem("Instrumento selecionado  ·  MusicXML", ExportPart);
             AddExportItem("Áudio  ·  .wav", ExportWave);
+            AddExportItem("Página atual  ·  .png", ExportPng);
             AddExportItem("Imprimir ou salvar PDF", Print);
             exportButton.Click += delegate { exportMenu.Show(exportButton, new Point(0, exportButton.Height)); };
             header.Controls.Add(exportButton);
@@ -218,7 +229,7 @@ namespace ValeScore
                 AddMusicButton(alterations, button, names[i], () => ChooseAccidental(alter));
                 accidentalButtons.Add(button);
             }
-            Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); };
+            Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); recoveryTimer.Dispose(); };
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
             previousButton = Button("‹", () => MovePage(-1));
@@ -232,6 +243,7 @@ namespace ValeScore
             pageLabel.ForeColor = TextColor;
             footer.Controls.Add(pageLabel);
             footer.Controls.Add(nextButton);
+            footer.Controls.Add(Button("Ir para…", GoToBar));
             zoom.Width = 117;
             zoom.DropDownStyle = ComboBoxStyle.DropDownList;
             zoom.AccessibleName = "Zoom da partitura";
@@ -328,13 +340,21 @@ namespace ValeScore
             FormClosing += (sender, args) =>
             {
                 args.Cancel = !ConfirmLeave();
-                if (!args.Cancel) { Stop(); CloseMidiInput(); }
+                if (!args.Cancel) { Stop(); CloseMidiInput(); ClearRecovery(); }
             };
             saved = score.Snapshot();
             SetDuration(4);
             RefreshView(true);
             SetMode(EditMode.Select);
             Report("Partitura de exemplo aberta");
+            recoveryTimer.Tick += delegate { SaveRecovery(); };
+            Shown += delegate
+            {
+                recoveryTimer.Start();
+                try { if (recovery.HasCopies()) Report("Há cópias de recuperação em Arquivo → Recuperar projeto"); }
+                catch (IOException) { }
+                catch (UnauthorizedAccessException) { }
+            };
         }
 
         private sealed class DarkMenu : ToolStripProfessionalRenderer
@@ -624,6 +644,11 @@ namespace ValeScore
         }
         private void ExportMidi() { Export("Arquivo MIDI (*.mid)|*.mid", MidiSequence.Export); }
         private void ExportMusicXml() { Export("MusicXML (*.musicxml)|*.musicxml", Output.MusicXml); }
+        private void ExportPart()
+        {
+            Export("Parte MusicXML (*.musicxml)|*.musicxml", (model, output) =>
+                Output.MusicXml(model.ExtractPart(position.Part), output), score.Parts[position.Part].Name);
+        }
         private void FocusWorkspace() { if (!editingLyric) ActiveControl = null; }
         private bool Dirty() { return saved == null || !score.Snapshot().SequenceEqual(saved); }
         private void Report(string message) { status.Text = message; }
@@ -850,6 +875,88 @@ namespace ValeScore
             Change(() => score.Bars++);
         }
 
+        private void GoToBar()
+        {
+            if (!CommitLyric()) return;
+            using (var dialog = new Form { Text = "Ir para compasso", ClientSize = new Size(320, 108),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false, MaximizeBox = false, Font = Font })
+            {
+                var number = new NumericUpDown { Minimum = 1, Maximum = score.Bars,
+                    Value = position.Tick / Score.BarTicks + 1, Bounds = new Rectangle(18, 18, 104, 28), AccessibleName = "Número do compasso" };
+                var go = new Button { Text = "Ir para", DialogResult = DialogResult.OK, Bounds = new Rectangle(134, 62, 80, 28) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(222, 62, 80, 28) };
+                dialog.Controls.AddRange(new Control[] { number, go, cancel });
+                dialog.AcceptButton = go;
+                dialog.CancelButton = cancel;
+                if (dialog.ShowDialog(this) == DialogResult.OK) SelectBar((int)number.Value - 1);
+            }
+        }
+
+        private void SelectBar(int bar)
+        {
+            position.Tick = bar * Score.BarTicks;
+            RefreshView();
+            RevealCursor();
+            Report("Compasso " + (bar + 1) + " de " + score.Bars);
+        }
+
+        private void DuplicateCurrentBar()
+        {
+            if (!CommitLyric()) return;
+            int bar = position.Tick / Score.BarTicks;
+            if (Change(() => score.DuplicateBar(bar))) SelectBar(bar + 1);
+        }
+
+        private void TransposeRange()
+        {
+            if (!CommitLyric()) return;
+            using (var dialog = new Form { Text = "Transpor partitura", ClientSize = new Size(405, 240),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false, MaximizeBox = false, Font = Font })
+            {
+                int bar = position.Tick / Score.BarTicks + 1;
+                var first = new NumericUpDown { Minimum = 1, Maximum = score.Bars, Value = bar, AccessibleName = "Primeiro compasso" };
+                var last = new NumericUpDown { Minimum = 1, Maximum = score.Bars, Value = bar, AccessibleName = "Último compasso" };
+                var method = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Tipo de transposição" };
+                method.Items.AddRange(new object[] { "Cromática (semitons)", "Diatônica (graus)" });
+                method.SelectedIndex = 0;
+                var amount = new NumericUpDown { Minimum = -24, Maximum = 24, Value = 1, AccessibleName = "Deslocamento" };
+                var whole = new CheckBox { Text = "Todas as partes", Checked = true, AutoSize = true, Location = new Point(16, 160) };
+                Control[] fields = { first, last, method, amount };
+                string[] names = { "Primeiro compasso", "Último compasso", "Tipo", "Deslocamento" };
+                for (int i = 0; i < fields.Length; i++)
+                {
+                    int y = 15 + i * 34;
+                    dialog.Controls.Add(new Label { Text = names[i], AutoSize = true, Location = new Point(16, y + 4) });
+                    fields[i].SetBounds(178, y, 208, 28);
+                    dialog.Controls.Add(fields[i]);
+                }
+                var apply = new Button { Text = "Transpor", Bounds = new Rectangle(206, 197, 84, 28) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(302, 197, 84, 28) };
+                apply.Click += delegate
+                {
+                    if (first.Value > last.Value)
+                    {
+                        MessageBox.Show(dialog, "O último compasso precisa ser igual ou posterior ao primeiro.");
+                        return;
+                    }
+                    int count = 0;
+                    if (Change(() => count = score.Transpose((int)first.Value - 1, (int)last.Value - 1,
+                        whole.Checked ? null : (int?)position.Part, (int)amount.Value, method.SelectedIndex == 0)))
+                    {
+                        Report(count + " notas no intervalo de transposição");
+                        dialog.DialogResult = DialogResult.OK;
+                    }
+                    else MessageBox.Show(dialog, status.Text, "Transposição", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                };
+                dialog.Controls.AddRange(new Control[] { whole, apply, cancel });
+                dialog.AcceptButton = apply;
+                dialog.CancelButton = cancel;
+                dialog.ShowDialog(this);
+            }
+        }
+
         protected override bool ProcessCmdKey(ref Message msg, Keys key)
         {
             if (editingLyric) return HandleLyricKey(key) || base.ProcessCmdKey(ref msg, key);
@@ -923,6 +1030,7 @@ namespace ValeScore
         private void LoadScore(Score model, string file)
         {
             Stop();
+            ClearRecovery();
             score = model;
             path = file;
             saved = score.Snapshot();
@@ -948,6 +1056,52 @@ namespace ValeScore
                 catch (Exception ex) { MessageBox.Show(this, ex.Message, "Não foi possível abrir", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
             }
         }
+
+        private void SaveRecovery()
+        {
+            try
+            {
+                var current = score.Snapshot();
+                if (saved != null && current.SequenceEqual(saved))
+                {
+                    if (recoverySnapshot != null) ClearRecovery();
+                    return;
+                }
+                if (recoverySnapshot != null && current.SequenceEqual(recoverySnapshot)) return;
+                recovery.Save(score);
+                recoverySnapshot = current;
+            }
+            catch (IOException) { Report("Não foi possível criar a cópia de recuperação."); }
+            catch (UnauthorizedAccessException) { Report("Sem acesso à pasta de recuperação."); }
+        }
+
+        private void ClearRecovery()
+        {
+            try { recovery.Clear(); recoverySnapshot = null; }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        private void Recover()
+        {
+            try
+            {
+                if (!recovery.HasCopies()) { Report("Nenhuma cópia de recuperação disponível"); return; }
+                using (var dialog = new OpenFileDialog { Title = "Recuperar projeto",
+                    InitialDirectory = recovery.Folder, Filter = "Cópia Vale Score (*.valescore)|*.valescore" })
+                {
+                    if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                    var recovered = Score.Open(dialog.FileName);
+                    if (!ConfirmLeave()) return;
+                    LoadScore(recovered, null);
+                    saved = null;
+                    SaveRecovery();
+                    RefreshView();
+                    Report("Projeto recuperado. Use Salvar para escolher o arquivo final.");
+                }
+            }
+            catch (Exception ex) { MessageBox.Show(this, ex.Message, "Recuperação", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
         private bool Save(bool copy)
         {
             if (!CommitLyric()) return false;
@@ -965,6 +1119,7 @@ namespace ValeScore
                 score.Save(destination);
                 path = destination;
                 saved = score.Snapshot();
+                ClearRecovery();
                 RefreshView();
                 Report("Projeto salvo");
                 return true;
@@ -999,15 +1154,17 @@ namespace ValeScore
             }
         }
 
-        private string ExportPath(string filter)
+        private string ExportPath(string filter, string suffix = null)
         {
             if (!CommitLyric()) return null;
-            using (var dialog = new SaveFileDialog { Filter = filter, FileName = SafeFileName() })
+            using (var dialog = new SaveFileDialog { Filter = filter,
+                FileName = SafeFileName() + (suffix == null ? "" : " - " + string.Concat(suffix.Select(c =>
+                    Path.GetInvalidFileNameChars().Contains(c) ? '_' : c)).TrimEnd('.', ' ')) })
                 return dialog.ShowDialog(this) == DialogResult.OK ? dialog.FileName : null;
         }
-        private void Export(string filter, Action<Score, Stream> write)
+        private void Export(string filter, Action<Score, Stream> write, string suffix = null)
         {
-            string destination = ExportPath(filter);
+            string destination = ExportPath(filter, suffix);
             if (destination == null) return;
             try
             {
@@ -1036,6 +1193,13 @@ namespace ValeScore
                 Report("Áudio WAV exportado");
             }
             catch (Exception ex) { Error(ex); }
+        }
+
+        private void ExportPng()
+        {
+            int page = sheet.Page;
+            Export("Imagem PNG (*.png)|*.png", (model, output) => Output.PagePng(model, sheet.Engraving,
+                Math.Min(page, sheet.Engraving.PageCount - 1), output));
         }
 
         private void Print()

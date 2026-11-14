@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.5.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.6.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -45,7 +45,7 @@ Base da matriz: prévia 0.5.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 02.05 | Modo de inserção que desloca conteúdo rítmico | Pendente | |
 | 02.06 | Seleção, filtros avançados e edição em massa | Pendente | |
 | 02.07 | Copiar, colar, duplicar e colagem múltipla | Pendente | |
-| 02.08 | Transposição cromática, diatônica e por intervalo | Pendente | |
+| 02.08 | Transposição cromática, diatônica e por intervalo | Parcial | [Testes](tests/Smoke.cs) de transposição por semitons e graus naturais. |
 | 02.09 | Inversão, retrogradação e transformações musicais | Pendente | |
 | 02.10 | Redução e expansão de material entre pautas | Pendente | |
 | 02.11 | Distribuição de vozes e instrumentos | Pendente | |
@@ -189,7 +189,7 @@ Base da matriz: prévia 0.5.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 10.02 | Avisos de notação potencialmente ambígua | Pendente | |
 | 10.03 | Ferramentas de revisão de compassos e durações | Parcial | |
 | 10.04 | Filtros por símbolo, instrumento, voz e seleção | Pendente | |
-| 10.05 | Localização e navegação rápida por compassos | Pendente | |
+| 10.05 | Localização e navegação rápida por compassos | Parcial | Ctrl+G navega por número de compasso. |
 | 10.06 | Comparação visual e inspeção de partes | Pendente | |
 | 10.07 | Comentários e anotações de revisão quando suportados | Pendente | |
 | 10.08 | Personalização de opções de notação | Pendente | |
@@ -226,7 +226,7 @@ Base da matriz: prévia 0.5.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 12.03 | Importação de MIDI | Parcial | [Suíte Windows](tests/Smoke.cs). Conversão em grade fixa. Métrica variável, percussão e vozes independentes pendentes. |
 | 12.04 | Exportação de MIDI | Parcial | |
 | 12.05 | Exportação de PDF para impressão | Parcial | |
-| 12.06 | Exportação de imagens e gráficos vetoriais | Pendente | |
+| 12.06 | Exportação de imagens e gráficos vetoriais | Parcial | [Teste de PNG por página](tests/Smoke.cs). Exportação vetorial pendente. |
 | 12.07 | Exportação de áudio | Parcial | |
 | 12.08 | Impressão de partitura e partes | Parcial | |
 | 12.09 | Definição de páginas, orientação e tamanho | Pendente | |
@@ -240,7 +240,7 @@ Base da matriz: prévia 0.5.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | --- | --- | --- | --- |
 | 13.01 | Materiais para alunos e exercícios de teoria | Pendente | |
 | 13.02 | Partituras simplificadas e versões alternativas | Pendente | |
-| 13.03 | Partes individuais para ensaios | Pendente | |
+| 13.03 | Partes individuais para ensaios | Parcial | [Extração de instrumento](tests/Smoke.cs). Exportação MusicXML independente. Layout de partes vinculado pendente. |
 | 13.04 | Indicações de ensaio e referências de compasso | Pendente | |
 | 13.05 | Metrônomo e reprodução em velocidade ajustada | Pendente | |
 | 13.06 | Loop de trechos para estudo | Pendente | |
@@ -276,7 +276,7 @@ Base da matriz: prévia 0.5.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 15.03 | Piano com duas pautas por padrão e suporte a múltiplos pianos | Parcial | |
 | 15.04 | Partitura correta para três pianos e violão clássico | Parcial | |
 | 15.05 | Motor de notação separado da interface e do motor de áudio | Parcial | |
-| 15.06 | Arquivos de projeto versionados, autosave e recuperação | Parcial | |
+| 15.06 | Arquivos de projeto versionados, autosave e recuperação | Parcial | [Testes de snapshots e cópia de sessão](tests/Smoke.cs). Validação de interrupção real e backups rotativos pendentes. |
 | 15.07 | Exportação MusicXML, MIDI e PDF validada em outros leitores | Parcial | |
 | 15.08 | Sintetizador interno leve e VST3 opcional em fase posterior | Parcial | |
 | 15.09 | Testes de altura, ritmo, anacruse, vozes e transposição | Parcial | |

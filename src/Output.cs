@@ -10,6 +10,21 @@ namespace ValeScore
 {
     public static class Output
     {
+        public static void PagePng(Score score, ScoreLayout layout, int page, Stream target)
+        {
+            if (page < 0 || page >= layout.PageCount) throw new ArgumentOutOfRangeException("page");
+            using (var image = new System.Drawing.Bitmap(ScorePage.PageWidth * 2, ScorePage.PageHeight * 2))
+            {
+                using (var graphics = System.Drawing.Graphics.FromImage(image))
+                {
+                    graphics.Clear(System.Drawing.Color.White);
+                    graphics.ScaleTransform(2, 2);
+                    ScorePage.Draw(graphics, score, layout, page, null, -1, null);
+                }
+                image.Save(target, System.Drawing.Imaging.ImageFormat.Png);
+            }
+        }
+
         public const int SampleRate = 22050;
         public static MemoryStream Wave(Score score)
         {

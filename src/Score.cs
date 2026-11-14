@@ -154,6 +154,76 @@ namespace ValeScore
             return Durations.First(d => d <= remaining && tick % d == 0);
         }
 
+        public int Transpose(int startBar, int endBar, int? partIndex, int amount, bool chromatic)
+        {
+            if (startBar < 0 || endBar < startBar || endBar >= Bars ||
+                (partIndex.HasValue && (partIndex.Value < 0 || partIndex.Value >= Parts.Count)) ||
+                amount < -24 || amount > 24)
+                throw new ArgumentOutOfRangeException("Intervalo de transposição inválido.");
+            var changes = new List<Tuple<Note, int, int>>();
+            for (int p = 0; p < Parts.Count; p++)
+            {
+                if (partIndex.HasValue && p != partIndex.Value) continue;
+                for (int staff = 0; staff < Parts[p].Staves.Count; staff++)
+                foreach (var note in Parts[p].Staves[staff])
+                {
+                    if (note.IsRest || note.Tick < startBar * BarTicks || note.Tick >= (endBar + 1) * BarTicks) continue;
+                    int step = note.Step + amount, alter = note.Alter;
+                    if (chromatic && amount != 0)
+                    {
+                        int pitch = note.Midi + amount;
+                        if (pitch < 12 || pitch > 127) throw new InvalidOperationException("A transposição excede os limites de altura.");
+                        int tone = pitch % 12;
+                        int degree = amount < 0
+                            ? Array.FindIndex(Semitones, value => value >= tone)
+                            : Array.FindLastIndex(Semitones, value => value <= tone);
+                        if (degree < 0) { step = (pitch / 12) * 7; alter = -1; }
+                        else
+                        {
+                            step = (pitch / 12 - 1) * 7 + degree;
+                            alter = tone - Semitones[degree];
+                        }
+                    }
+                    int min = staff == 0 ? 25 : 13;
+                    if (step < min || step > min + 18)
+                        throw new InvalidOperationException("Uma nota sairia da extensão editável da pauta. Escolha um intervalo menor.");
+                    changes.Add(Tuple.Create(note, step, alter));
+                }
+            }
+            foreach (var change in changes) { change.Item1.Step = change.Item2; change.Item1.Alter = change.Item3; }
+            return changes.Count;
+        }
+
+        public void DuplicateBar(int bar)
+        {
+            if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
+            if (Bars == MaxBars) throw new InvalidOperationException("Limite de compassos atingido.");
+            int start = bar * BarTicks;
+            int end = start + BarTicks;
+            foreach (var staff in Parts.SelectMany(p => p.Staves))
+            {
+                var copies = staff.Where(n => n.Tick >= start && n.Tick < end).Select(n => new Note
+                {
+                    Tick = n.Tick + BarTicks, Length = n.Length, Step = n.Step, Alter = n.Alter,
+                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter
+                }).ToArray();
+                foreach (var note in staff.Where(n => n.Tick >= end)) note.Tick += BarTicks;
+                staff.AddRange(copies);
+                staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+            }
+            Bars++;
+        }
+
+        public Score ExtractPart(int index)
+        {
+            if (index < 0 || index >= Parts.Count) throw new ArgumentOutOfRangeException("index");
+            var copy = Restore(Snapshot());
+            var part = copy.Parts[index];
+            copy.Parts.Clear();
+            copy.Parts.Add(part);
+            return copy;
+        }
+
         public static int BeamGroupEnd(IList<Note> events, int index)
         {
             var first = events[index];
