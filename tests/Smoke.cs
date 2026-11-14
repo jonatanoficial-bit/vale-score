@@ -26,6 +26,31 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        using (var buffer = new MemoryStream())
+        {
+            MidiSequence.Export(score, buffer);
+            buffer.Position = 0;
+            var midi = MidiSequence.Read(buffer);
+            Assert(midi.Tracks == 2 && Math.Abs(midi.Duration - 10) < .001, "MIDI tipo 1 exporta pista, andamento e duração");
+            var pitches = midi.Events.Where(e => (e.Status & 240) == 0x90 && e.Data2 != 0).ToArray();
+            Assert(pitches.Length == score.Parts[0].Staves.Sum(lane => lane.Count(n => !n.IsRest)) &&
+                pitches.Any(e => e.Data1 == 60 && e.Seconds == 0), "MIDI exporta alturas e preserva pausas");
+            using (var wave = Output.MidiWave(midi, System.Threading.CancellationToken.None))
+                Assert(wave.ToArray().Skip(44).Any(b => b != 0), "MIDI produz sinal no sintetizador interno");
+            var track = new byte[] { 0, 0x90, 60, 80, 96, 60, 0, 0, 0xFF, 0x51, 3, 0x0F, 0x42, 0x40,
+                0, 0x90, 64, 80, 96, 64, 0, 0, 0xFF, 0x2F, 0 };
+            var header = new byte[] { 77, 84, 104, 100, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 77, 84, 114, 107, 0, 0, 0, (byte)track.Length };
+            using (var formatZero = new MemoryStream(header.Concat(track).ToArray()))
+            {
+                var parsed = MidiSequence.Read(formatZero);
+                Assert(parsed.Tracks == 1 && parsed.Events.Length == 4 && Math.Abs(parsed.Duration - 1.5) < .001 &&
+                    Math.Abs(parsed.Events[2].Seconds - .5) < .001, "MIDI tipo 0 interpreta status corrente e mudanças de andamento");
+            }
+            bool broken = false;
+            try { using (var invalid = new MemoryStream(header.Concat(track.Take(track.Length - 1)).ToArray())) MidiSequence.Read(invalid); }
+            catch (InvalidDataException) { broken = true; }
+            Assert(broken, "MIDI truncado é recusado");
+        }
         Assert(score.Parts[0].Staves.Count == 2, "Piano com duas pautas");
         score.AddPart("Piano");
         score.AddPart("Piano");
@@ -140,6 +165,8 @@ internal static class Smoke
             }
             var type = typeof(Editor);
             var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            var output = (ComboBox)type.GetField("midiOutput", flags).GetValue(editor);
+            Assert(output.Items.Count > 0 && (string)output.Items[0] == "Som interno", "Transporte oferece som interno sem dispositivo MIDI");
             var model = type.GetField("score", flags);
             var edit = type.GetMethod("ProcessCmdKey", flags);
             var undo = type.GetField("undoButton", flags);

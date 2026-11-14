@@ -13,21 +13,28 @@ namespace ValeScore
 {
     public sealed class Editor : Form
     {
-        private static readonly Color Dark = Color.FromArgb(19, 25, 33);
-        private static readonly Color PanelColor = Color.FromArgb(28, 37, 48);
-        private static readonly Color TextColor = Color.FromArgb(239, 244, 248);
-        private static readonly Color Muted = Color.FromArgb(166, 184, 199);
-        private static readonly Color Teal = Color.FromArgb(15, 110, 91);
+        private static readonly Color Dark = Color.FromArgb(19, 23, 35);
+        private static readonly Color PanelColor = Color.FromArgb(28, 34, 49);
+        private static readonly Color TextColor = Color.FromArgb(245, 245, 253);
+        private static readonly Color Muted = Color.FromArgb(180, 187, 210);
+        private static readonly Color Accent = Color.FromArgb(86, 62, 160);
+        private static readonly Color Lavender = Color.FromArgb(197, 178, 255);
         private static readonly string[] Figures = { "Semibreve", "Mínima", "Semínima", "Colcheia", "Semicolcheia" };
         private static readonly Keys[] PitchKeys = { Keys.A, Keys.S, Keys.D, Keys.F, Keys.G, Keys.H, Keys.J };
         private enum EditMode { Select, Write, Rest, Erase, Lyrics }
         private readonly ScorePage sheet = new ScorePage();
-        private readonly Panel surface = new Panel { AutoScroll = true, Dock = DockStyle.Fill, BackColor = Color.FromArgb(167, 177, 186) };
+        private readonly Panel surface = new Panel { AutoScroll = true, Dock = DockStyle.Fill, BackColor = Color.FromArgb(122, 132, 153) };
         private readonly FlowLayoutPanel tools = new FlowLayoutPanel();
         private readonly ListBox tracks = new ListBox();
         private readonly Label pageLabel = new Label(), status = new Label(), selection = new Label(), modeHint = new Label();
         private readonly Button undoButton, redoButton, playButton, previousButton, nextButton;
         private readonly Button editLyricButton, eraseNoteButton;
+        private readonly Label documentTitle = new Label(), documentInfo = new Label();
+        private readonly Label playbackLabel = new Label();
+        private readonly TransportRail transportRail = new TransportRail();
+        private readonly ComboBox midiOutput = new ComboBox();
+        private readonly ToolStripMenuItem inputMenu = new ToolStripMenuItem("Teclado MIDI");
+        private readonly ContextMenuStrip exportMenu = new ContextMenuStrip();
         private readonly List<Button> durationButtons = new List<Button>();
         private readonly List<Button> restButtons = new List<Button>();
         private readonly List<Button> accidentalButtons = new List<Button>();
@@ -41,6 +48,14 @@ namespace ValeScore
         private MemoryStream playback;
         private SoundPlayer player;
         private int playbackGeneration;
+        private int inputGeneration;
+        private MidiDevices.Input midiInput;
+        private System.Threading.CancellationTokenSource midiCancellation;
+        private System.Threading.Tasks.Task midiPlaybackTask;
+        private MidiSequence loadedMidi;
+        private string midiName;
+        private bool playingMidiFile;
+        private double playbackLength;
         private bool preparing, syncingTracks, editingLyric;
         private EditMode mode = EditMode.Select;
         private Score score = Score.New(true);
@@ -67,10 +82,12 @@ namespace ValeScore
             var file = new ToolStripMenuItem("Arquivo");
             Item(file, "Nova partitura", Keys.Control | Keys.N, () => New(false));
             Item(file, "Abrir…", Keys.Control | Keys.O, Open);
+            Item(file, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
             Item(file, "Salvar", Keys.Control | Keys.S, () => Save(false));
             Item(file, "Salvar como…", Keys.Control | Keys.Shift | Keys.S, () => Save(true));
             file.DropDownItems.Add(new ToolStripSeparator());
-            Item(file, "Exportar MusicXML…", Keys.None, () => Export("MusicXML (*.musicxml)|*.musicxml", Output.MusicXml));
+            Item(file, "Exportar MIDI…", Keys.None, ExportMidi);
+            Item(file, "Exportar MusicXML…", Keys.None, ExportMusicXml);
             Item(file, "Exportar WAV…", Keys.None, ExportWave);
             Item(file, "Imprimir / PDF…", Keys.Control | Keys.P, Print);
             Item(file, "Abrir partitura de exemplo", Keys.None, () => New(true));
@@ -90,11 +107,18 @@ namespace ValeScore
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
-            menu.Items.AddRange(new ToolStripItem[] { file, edit, help });
+            var playbackMenu = new ToolStripMenuItem("Reprodução");
+            Item(playbackMenu, "Tocar ou parar partitura", Keys.None, Play);
+            Item(playbackMenu, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
+            Item(playbackMenu, "Tocar ou parar MIDI aberto", Keys.None, PlayLoadedMidi);
+            playbackMenu.DropDownItems.Add(inputMenu);
+            inputMenu.ForeColor = TextColor;
+            inputMenu.DropDownOpening += delegate { PopulateInputs(); };
+            menu.Items.AddRange(new ToolStripItem[] { file, edit, playbackMenu, help });
 
             var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 56, Padding = new Padding(17, 9, 0, 4), WrapContents = false, BackColor = PanelColor };
-            var brand = new Label { Text = "Vale Score", ForeColor = TextColor, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft,
-                Width = 159, Height = 34, Font = new Font("Georgia", 17, FontStyle.Bold) };
+            var brand = new Label { Text = "Vale Score", ForeColor = Lavender, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft,
+                Width = 168, Height = 34, Font = new Font("Segoe UI Semibold", 17) };
             header.Controls.Add(brand);
             header.Controls.Add(Button("Novo", () => New(false)));
             header.Controls.Add(Button("Abrir", Open));
@@ -103,16 +127,33 @@ namespace ValeScore
             redoButton = Button("Refazer", () => History(redo, undo));
             header.Controls.Add(undoButton);
             header.Controls.Add(redoButton);
-            playButton = Button("▶  Reproduzir", Play);
-            playButton.Width = 125;
-            playButton.BackColor = Teal;
-            header.Controls.Add(playButton);
+            var exportButton = Button("↓  Exportar");
+            exportButton.BackColor = Accent;
+            exportMenu.BackColor = PanelColor;
+            exportMenu.ForeColor = TextColor;
+            exportMenu.Renderer = new DarkMenu();
+            AddExportItem("MIDI  ·  .mid", ExportMidi);
+            AddExportItem("MusicXML  ·  .musicxml", ExportMusicXml);
+            AddExportItem("Áudio  ·  .wav", ExportWave);
+            AddExportItem("Imprimir ou salvar PDF", Print);
+            exportButton.Click += delegate { exportMenu.Show(exportButton, new Point(0, exportButton.Height)); };
+            header.Controls.Add(exportButton);
 
             var body = new Panel { Dock = DockStyle.Fill };
             var left = new Panel { Dock = DockStyle.Left, Width = 220, BackColor = PanelColor, Padding = new Padding(14, 8, 12, 0) };
             var sidebar = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
             left.Controls.Add(sidebar);
-            sidebar.Controls.Add(Caption("INSTRUMENTOS"));
+            documentTitle.Width = 172;
+            documentTitle.Height = 49;
+            documentTitle.Font = new Font("Segoe UI Semibold", 13);
+            documentTitle.ForeColor = TextColor;
+            sidebar.Controls.Add(documentTitle);
+            documentInfo.Width = 172;
+            documentInfo.Height = 24;
+            documentInfo.ForeColor = Lavender;
+            documentInfo.Font = new Font("Segoe UI Semibold", 9);
+            sidebar.Controls.Add(documentInfo);
+            sidebar.Controls.Add(Caption("PAUTAS"));
             tracks.Width = 172;
             tracks.Height = 94;
             tracks.BackColor = Dark;
@@ -175,7 +216,7 @@ namespace ValeScore
                 AddMusicButton(alterations, button, names[i], () => ChooseAccidental(alter));
                 accidentalButtons.Add(button);
             }
-            Disposed += delegate { figureTips.Dispose(); };
+            Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); };
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
             previousButton = Button("‹", () => MovePage(-1));
@@ -204,6 +245,33 @@ namespace ValeScore
             status.Margin = new Padding(12, 2, 0, 0);
             footer.Controls.Add(status);
 
+            var transport = new Panel { Dock = DockStyle.Bottom, Height = 53, BackColor = PanelColor };
+            var transportControls = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false,
+                Padding = new Padding(9, 3, 0, 0), BackColor = PanelColor };
+            playButton = Button("▶  Tocar", Play);
+            playButton.AutoSize = false;
+            playButton.Width = 87;
+            playButton.BackColor = Accent;
+            transportControls.Controls.Add(playButton);
+            transportControls.Controls.Add(Button("Abrir MIDI…", OpenMidi));
+            midiOutput.DropDownStyle = ComboBoxStyle.DropDownList;
+            midiOutput.AccessibleName = "Saída de áudio ou MIDI";
+            midiOutput.Width = 168;
+            midiOutput.Margin = new Padding(9, 5, 3, 0);
+            midiOutput.DropDown += delegate { RefreshOutputs(); };
+            transportControls.Controls.Add(midiOutput);
+            playbackLabel.Text = "0:00 / 0:00";
+            playbackLabel.AutoSize = false;
+            playbackLabel.Width = 118;
+            playbackLabel.Height = 33;
+            playbackLabel.TextAlign = ContentAlignment.MiddleCenter;
+            playbackLabel.ForeColor = Lavender;
+            transportControls.Controls.Add(playbackLabel);
+            transportRail.Dock = DockStyle.Bottom;
+            transport.Controls.Add(transportControls);
+            transport.Controls.Add(transportRail);
+            RefreshOutputs();
+
             var main = new Panel { Dock = DockStyle.Fill };
             modeHint.Dock = DockStyle.Bottom;
             modeHint.Height = 28;
@@ -228,6 +296,7 @@ namespace ValeScore
             main.Controls.Add(modes);
             main.Controls.Add(modeHint);
             main.Controls.Add(footer);
+            main.Controls.Add(transport);
             body.Controls.Add(main);
             body.Controls.Add(left);
             Controls.Add(body);
@@ -237,15 +306,28 @@ namespace ValeScore
 
             timer.Tick += delegate
             {
+                UpdateTransport(clock.Elapsed.TotalSeconds);
+                if (playingMidiFile)
+                {
+                    if (midiCancellation == null && clock.Elapsed.TotalSeconds >= playbackLength) Stop();
+                    return;
+                }
                 int tick = (int)(clock.Elapsed.TotalSeconds * score.Tempo / 15);
-                if (tick >= score.Bars * 16) Stop();
+                if (tick >= score.Bars * 16)
+                {
+                    if (midiCancellation == null) Stop();
+                }
                 else if (tick != sheet.Playing)
                 {
                     sheet.Playing = tick;
                     ChangePage(sheet.Engraving.PageOf(tick));
                 }
             };
-            FormClosing += (sender, args) => { args.Cancel = !ConfirmLeave(); if (!args.Cancel) Stop(); };
+            FormClosing += (sender, args) =>
+            {
+                args.Cancel = !ConfirmLeave();
+                if (!args.Cancel) { Stop(); CloseMidiInput(); }
+            };
             saved = score.Snapshot();
             SetDuration(4);
             RefreshView(true);
@@ -259,9 +341,9 @@ namespace ValeScore
         }
         private sealed class MenuColors : ProfessionalColorTable
         {
-            public override Color MenuItemSelected { get { return Teal; } }
-            public override Color MenuItemSelectedGradientBegin { get { return Teal; } }
-            public override Color MenuItemSelectedGradientEnd { get { return Teal; } }
+            public override Color MenuItemSelected { get { return Accent; } }
+            public override Color MenuItemSelectedGradientBegin { get { return Accent; } }
+            public override Color MenuItemSelectedGradientEnd { get { return Accent; } }
             public override Color MenuItemPressedGradientBegin { get { return PanelColor; } }
             public override Color MenuItemPressedGradientEnd { get { return PanelColor; } }
             public override Color ToolStripDropDownBackground { get { return PanelColor; } }
@@ -357,7 +439,7 @@ namespace ValeScore
             if (!CommitLyric()) return;
             mode = value;
             foreach (var item in modeButtons)
-                item.Value.BackColor = item.Key == value ? Teal : PanelColor;
+                item.Value.BackColor = item.Key == value ? Accent : PanelColor;
             sheet.ShowEntryPreview = mode == EditMode.Write || mode == EditMode.Rest;
             sheet.PreviewRest = mode == EditMode.Rest;
             sheet.Cursor = sheet.ShowEntryPreview ? Cursors.Cross : mode == EditMode.Lyrics ? Cursors.IBeam : Cursors.Default;
@@ -516,13 +598,13 @@ namespace ValeScore
             return new Label { Text = text, Width = 180, Height = 25, ForeColor = Muted,
                 Margin = new Padding(3, 13, 0, 1), Font = new Font("Segoe UI Semibold", 9) };
         }
-        private Button Button(string text, Action action)
+        private Button Button(string text, Action action = null)
         {
             var button = new Button { Text = text, Height = 32, AutoSize = true, FlatStyle = FlatStyle.Flat,
                 BackColor = PanelColor, ForeColor = TextColor, Cursor = Cursors.Hand, Margin = new Padding(3, 2, 3, 3) };
             button.FlatAppearance.BorderColor = Color.FromArgb(55, 69, 83);
             button.FlatAppearance.MouseOverBackColor = Color.FromArgb(48, 65, 80);
-            button.Click += delegate { action(); FocusWorkspace(); };
+            if (action != null) button.Click += delegate { action(); FocusWorkspace(); };
             return button;
         }
         private ToolStripMenuItem Item(ToolStripMenuItem menu, string title, Keys shortcut, Action action)
@@ -532,6 +614,14 @@ namespace ValeScore
             menu.DropDownItems.Add(item);
             return item;
         }
+        private void AddExportItem(string title, Action action)
+        {
+            var item = new ToolStripMenuItem(title) { ForeColor = TextColor };
+            item.Click += delegate { action(); };
+            exportMenu.Items.Add(item);
+        }
+        private void ExportMidi() { Export("Arquivo MIDI (*.mid)|*.mid", MidiSequence.Export); }
+        private void ExportMusicXml() { Export("MusicXML (*.musicxml)|*.musicxml", Output.MusicXml); }
         private void FocusWorkspace() { if (!editingLyric) ActiveControl = null; }
         private bool Dirty() { return !score.Snapshot().SequenceEqual(saved); }
         private void Report(string message) { status.Text = message; }
@@ -621,7 +711,10 @@ namespace ValeScore
                 + (selected != null && selected.IsRest ? "Pausa" : Score.Names[step % 7] + altered + (step / 7))
                 + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, selected.Length)])
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
-            Text = score.Title + (Dirty() ? " *" : "") + " — Vale Score";
+            bool dirty = Dirty();
+            Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
+            documentTitle.Text = score.Title;
+            documentInfo.Text = score.Tempo + " BPM  /  4⁄4  /  " + (dirty ? "Editado" : path == null ? "Local" : "Salvo");
             undoButton.Enabled = undo.Count > 0;
             redoButton.Enabled = redo.Count > 0;
             editLyricButton.Enabled = note != null;
@@ -697,12 +790,12 @@ namespace ValeScore
             for (int i = 0; i < durationButtons.Count; i++)
             {
                 bool same = Score.Durations[i] == active;
-                durationButtons[i].BackColor = !rest && same ? Teal : PanelColor;
-                restButtons[i].BackColor = rest && same ? Teal : PanelColor;
+                durationButtons[i].BackColor = !rest && same ? Accent : PanelColor;
+                restButtons[i].BackColor = rest && same ? Accent : PanelColor;
             }
             int accidental = showingSelection && !selected.IsRest ? selected.Alter : inputAlter;
             for (int i = 0; i < accidentalButtons.Count; i++)
-                accidentalButtons[i].BackColor = !rest && i == accidental + 1 ? Teal : PanelColor;
+                accidentalButtons[i].BackColor = !rest && i == accidental + 1 ? Accent : PanelColor;
             sheet.PreviewLength = duration;
             sheet.PreviewAlter = inputAlter;
             sheet.Invalidate();
@@ -968,18 +1061,147 @@ namespace ValeScore
             catch (Exception ex) { Error(ex); }
         }
 
-        private async void Play()
+        private void RefreshOutputs()
+        {
+            var previous = midiOutput.SelectedItem as MidiDevices.Device;
+            midiOutput.Items.Clear();
+            midiOutput.Items.Add("Som interno");
+            foreach (var device in MidiDevices.Outputs()) midiOutput.Items.Add(device);
+            midiOutput.SelectedIndex = 0;
+            if (previous == null) return;
+            for (int i = 1; i < midiOutput.Items.Count; i++)
+            {
+                var device = (MidiDevices.Device)midiOutput.Items[i];
+                if (device.Id == previous.Id && device.Name == previous.Name) { midiOutput.SelectedIndex = i; break; }
+            }
+        }
+
+        private void PopulateInputs()
+        {
+            foreach (ToolStripItem old in inputMenu.DropDownItems.Cast<ToolStripItem>().ToArray()) old.Dispose();
+            inputMenu.DropDownItems.Clear();
+            Item(inputMenu, midiInput == null ? "Entrada desligada" : "Desconectar teclado", Keys.None, CloseMidiInput)
+                .Enabled = midiInput != null;
+            var devices = MidiDevices.Inputs();
+            foreach (var device in devices)
+                Item(inputMenu, device.Name, Keys.None, () => ConnectMidiInput(device));
+            if (devices.Count == 0) Item(inputMenu, "Nenhum teclado MIDI detectado", Keys.None, () => { }).Enabled = false;
+        }
+
+        private void ConnectMidiInput(MidiDevices.Device device)
+        {
+            if (!CommitLyric()) return;
+            CloseMidiInput();
+            int generation = inputGeneration;
+            try
+            {
+                midiInput = new MidiDevices.Input(device, pitch =>
+                {
+                    // WinMM callbacks must leave UI and driver operations to their respective threads.
+                    try
+                    {
+                        BeginInvoke(new Action(() =>
+                        {
+                            if (generation == inputGeneration && !IsDisposed && mode == EditMode.Write &&
+                                !preparing && !timer.Enabled && !editingLyric) EnterMidiPitch(pitch);
+                        }));
+                    }
+                    catch (InvalidOperationException) { }
+                });
+                SetMode(EditMode.Write);
+                Report("Entrada MIDI ativa · " + device.Name);
+            }
+            catch (Exception ex) { Error(ex); }
+        }
+
+        private void CloseMidiInput()
+        {
+            ++inputGeneration;
+            if (midiInput == null) return;
+            midiInput.Dispose();
+            midiInput = null;
+            Report("Entrada MIDI desligada");
+        }
+
+        private void EnterMidiPitch(int pitch)
+        {
+            int octave = pitch / 12 - 1;
+            int tone = pitch % 12;
+            int step = Array.FindLastIndex(Score.Semitones, value => value <= tone);
+            if (Put(octave * 7 + step, duration, tone - Score.Semitones[step])) AdvanceInput();
+        }
+
+        private void OpenMidi()
+        {
+            if (!CommitLyric()) return;
+            using (var dialog = new OpenFileDialog { Filter = "Arquivos MIDI (*.mid;*.midi)|*.mid;*.midi" })
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK) return;
+                try
+                {
+                    var sequence = MidiSequence.Open(dialog.FileName);
+                    Stop();
+                    loadedMidi = sequence;
+                    midiName = Path.GetFileName(dialog.FileName);
+                    PlayLoadedMidi();
+                }
+                catch (Exception ex) { MessageBox.Show(this, ex.Message, "Não foi possível abrir o MIDI", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+            }
+        }
+
+        private void PlayLoadedMidi()
+        {
+            if (loadedMidi == null) { OpenMidi(); return; }
+            StartPlayback(loadedMidi);
+        }
+
+        private void Play() { StartPlayback(null); }
+
+        private async void StartPlayback(MidiSequence file)
         {
             if (!CommitLyric()) return;
             if (preparing || timer.Enabled) { Stop(); return; }
+            if (midiPlaybackTask != null && !midiPlaybackTask.IsCompleted)
+            {
+                Report("A saída MIDI está encerrando a reprodução.");
+                return;
+            }
             int generation = ++playbackGeneration;
             preparing = true;
+            playingMidiFile = file != null;
             playButton.Text = "■  Parar";
             Report("Preparando reprodução…");
-            var snapshot = Score.Restore(score.Snapshot());
+            var output = midiOutput.SelectedItem as MidiDevices.Device;
+            var cancellation = new System.Threading.CancellationTokenSource();
+            midiCancellation = cancellation;
             try
             {
-                var wave = await Task.Run(() => Output.Wave(snapshot));
+                playbackLength = file == null ? score.Bars * 240.0 / score.Tempo : file.Duration;
+                UpdateTransport(0);
+                if (output != null)
+                {
+                    MidiSequence sequence = file;
+                    if (sequence == null)
+                    {
+                        using (var buffer = new MemoryStream())
+                        {
+                            MidiSequence.Export(score, buffer);
+                            buffer.Position = 0;
+                            sequence = MidiSequence.Read(buffer);
+                        }
+                    }
+                    if (file == null) ChangePage(0);
+                    preparing = false;
+                    timer.Start();
+                    Report(file == null ? "Partitura · " + output.Name : midiName + " · " + output.Name);
+                    midiPlaybackTask = MidiDevices.Play(sequence, output, clock, cancellation.Token);
+                    await midiPlaybackTask;
+                    if (generation == playbackGeneration && !IsDisposed) Stop();
+                    return;
+                }
+
+                var snapshot = file == null ? Score.Restore(score.Snapshot()) : null;
+                var wave = await Task.Run(() => file == null ? Output.Wave(snapshot) : Output.MidiWave(file, cancellation.Token));
                 if (generation != playbackGeneration || IsDisposed) { wave.Dispose(); return; }
                 playback = wave;
                 player = new SoundPlayer(playback);
@@ -987,27 +1209,50 @@ namespace ValeScore
                 player.Play();
                 preparing = false;
                 clock.Restart();
-                ChangePage(0);
+                if (file == null) ChangePage(0);
                 timer.Start();
-                Report("Reproduzindo desde o início");
+                Report(file == null ? "Partitura · Som interno" : midiName + " · Som interno");
             }
+            catch (OperationCanceledException) { }
             catch (Exception ex)
             {
                 if (generation == playbackGeneration && !IsDisposed) { Stop(); Error(ex); }
             }
+            finally
+            {
+                if (ReferenceEquals(midiCancellation, cancellation)) midiCancellation = null;
+                cancellation.Dispose();
+            }
         }
+
+        private void UpdateTransport(double elapsed)
+        {
+            elapsed = Math.Min(elapsed, playbackLength);
+            transportRail.UpdateProgress(playbackLength > 0 ? elapsed / playbackLength : 0);
+            playbackLabel.Text = FormatTime(elapsed) + " / " + FormatTime(playbackLength);
+        }
+
+        private static string FormatTime(double seconds)
+        {
+            int time = (int)seconds;
+            return (time / 60) + ":" + (time % 60).ToString("00");
+        }
+
         private void Stop()
         {
             ++playbackGeneration;
             bool wasPlaying = preparing || timer.Enabled;
             preparing = false;
+            playingMidiFile = false;
+            if (midiCancellation != null) midiCancellation.Cancel();
             timer.Stop();
             clock.Reset();
             if (player != null) { player.Stop(); player.Dispose(); player = null; }
             if (playback != null) { playback.Dispose(); playback = null; }
             sheet.Playing = -1;
             sheet.Invalidate();
-            playButton.Text = "▶  Reproduzir";
+            playButton.Text = "▶  Tocar";
+            UpdateTransport(0);
             if (wasPlaying) Report("Reprodução encerrada");
         }
     }

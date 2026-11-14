@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Threading;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -23,17 +25,92 @@ namespace ValeScore
                 if (note.IsRest) continue;
                 int start = (int)Math.Round(note.Tick * tick);
                 int count = (int)Math.Round((note.Tick + note.Length) * tick) - start;
-                double pitch = 2 * Math.PI * 440 * Math.Pow(2, (note.Midi - 69) / 12.0) / SampleRate;
                 double decay = part.Instrument == "Voz" ? 0.8 : part.Instrument == "Violão" ? 5.0 : 2.8;
-                for (int i = 0; i < count; i++)
-                {
-                    double angle = pitch * i;
-                    double envelope = Math.Min(1, Math.Min(i / 165.0, (count - 1 - i) / 600.0));
-                    double tone = Math.Sin(angle) + 0.20 * Math.Sin(angle * 2) + 0.06 * Math.Sin(angle * 3);
-                    samples[start + i] += (float)(gain * envelope * tone * Math.Exp(-decay * i / SampleRate));
-                }
+                AddTone(samples, start, count, note.Midi, gain, decay);
             }
+            return WriteWave(samples);
+        }
 
+        private sealed class Voice
+        {
+            public int Pitch, Velocity;
+            public double Start;
+        }
+
+        public static MemoryStream MidiWave(MidiSequence sequence, CancellationToken cancellation)
+        {
+            if (sequence.Duration > 600)
+                throw new InvalidOperationException("O sintetizador interno toca arquivos MIDI de até 10 minutos. Selecione uma saída MIDI para arquivos maiores.");
+            var samples = new float[Math.Max(1, (int)Math.Ceiling(sequence.Duration * SampleRate))];
+            var notes = new Dictionary<int, Voice>();
+            var held = Enumerable.Range(0, 16).Select(i => new List<Voice>()).ToArray();
+            var pedal = new bool[16];
+            int work = 0;
+            Action<Voice, double> render = (voice, end) =>
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int start = (int)Math.Round(voice.Start * SampleRate);
+                int count = Math.Min(samples.Length, (int)Math.Round(end * SampleRate)) - start;
+                if (count <= 0) return;
+                if (count > 80000000 - work) throw new InvalidOperationException("O MIDI é denso demais para o sintetizador interno. Use uma saída MIDI.");
+                work += count;
+                AddTone(samples, start, count, voice.Pitch, .19 * voice.Velocity / 127, 1.7);
+            };
+            foreach (var item in sequence.Events)
+            {
+                cancellation.ThrowIfCancellationRequested();
+                int channel = item.Status & 15;
+                int kind = item.Status & 240;
+                int key = channel * 128 + item.Data1;
+                if (kind == 0xB0 && (item.Data1 == 64 || item.Data1 == 120 || item.Data1 == 123))
+                {
+                    bool sustain = item.Data1 == 64 && item.Data2 >= 64;
+                    if (!sustain)
+                    {
+                        foreach (var voice in held[channel]) render(voice, item.Seconds);
+                        held[channel].Clear();
+                    }
+                    if (item.Data1 != 64)
+                    {
+                        foreach (int active in notes.Keys.Where(k => k / 128 == channel).ToArray())
+                        {
+                            render(notes[active], item.Seconds);
+                            notes.Remove(active);
+                        }
+                    }
+                    pedal[channel] = sustain;
+                    continue;
+                }
+                if (kind != 0x80 && kind != 0x90) continue;
+                Voice current;
+                if (notes.TryGetValue(key, out current))
+                {
+                    if (pedal[channel] && (kind == 0x80 || item.Data2 == 0)) held[channel].Add(current);
+                    else render(current, item.Seconds);
+                    notes.Remove(key);
+                }
+                if (kind == 0x90 && item.Data2 > 0)
+                    notes[key] = new Voice { Pitch = item.Data1, Velocity = item.Data2, Start = item.Seconds };
+            }
+            foreach (var voice in notes.Values.Concat(held.SelectMany(list => list))) render(voice, sequence.Duration);
+            return WriteWave(samples);
+        }
+
+        private static void AddTone(float[] samples, int start, int count, int midi, double gain, double decay)
+        {
+            double pitch = 2 * Math.PI * 440 * Math.Pow(2, (midi - 69) / 12.0) / SampleRate;
+            for (int i = 0; i < count; i++)
+            {
+                double angle = pitch * i;
+                double envelope = Math.Min(1, Math.Min(i / 165.0, (count - 1 - i) / 600.0));
+                double tone = Math.Sin(angle) + 0.20 * Math.Sin(angle * 2) + 0.06 * Math.Sin(angle * 3);
+                samples[start + i] += (float)(gain * envelope * tone * Math.Exp(-decay * i / SampleRate));
+            }
+        }
+
+        private static MemoryStream WriteWave(float[] samples)
+        {
+            int size = samples.Length;
             var stream = new MemoryStream(44 + size * 2);
             using (var writer = new BinaryWriter(stream, Encoding.ASCII, true))
             {

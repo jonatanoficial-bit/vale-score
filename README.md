@@ -1,8 +1,10 @@
 # Vale Score
 
-**0.3.0 · Prévia para Windows x64**
+**0.4.0 · Prévia para Windows x64**
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.3.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.3.0-win-x64.zip.sha256)
+O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
+
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.4.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.4.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -13,10 +15,14 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Colocar letra.** Selecione uma nota e pressione **Shift+L**. Digite sob a pauta. **Espaço** encerra a palavra e **hífen** separa sílabas. Ambos avançam para a próxima nota na mesma pauta. **Enter** confirma, **Esc** cancela o texto atual e **Shift+Tab** volta à nota anterior.
 - **Navegar.** Use o zoom e as setas de página na barra inferior. **F1** abre a lista de atalhos.
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
-- **Ouvir e compartilhar.** Use Espaço para tocar ou parar fora da edição de letras. Exporte MusicXML com a letra ou WAV pelo menu Arquivo. Para PDF, escolha Microsoft Print to PDF na caixa de impressão, quando disponível.
+- **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
+- **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. Cada tecla insere uma nota e avança o cursor na pauta ativa. A entrada é nota por nota, com a duração escolhida na paleta.
+- **Exportar.** O botão **Exportar** oferece MIDI tipo 1 com uma pista por instrumento, MusicXML com letras, WAV e impressão. Para PDF, escolha **Microsoft Print to PDF** quando disponível no Windows.
 - **Salvar.** O formato `.valescore` armazena a partitura localmente. Ctrl+S salva. Ctrl+Z e Ctrl+Y navegam pelo histórico de edição.
 
 A prévia suporta até 64 compassos em 4/4, uma linha melódica e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
+
+A abertura de MIDI é para reprodução. Conversão de MIDI em partitura, gravação em tempo real e suporte a VST ficam para etapas posteriores. O som interno de arquivos MIDI usa um timbre simples, lê andamento e pedal e tem limite de 10 minutos. A saída MIDI do Windows permite usar os timbres do dispositivo selecionado.
 
 ## Compilar e testar
 

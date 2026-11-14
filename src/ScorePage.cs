@@ -17,8 +17,8 @@ namespace ValeScore
     {
         public const int PageWidth = 780, PageHeight = 1100;
         private static readonly Color Ink = Color.FromArgb(31, 36, 42);
-        private static readonly Color Accent = Color.FromArgb(15, 120, 100);
-        private static readonly Color Guide = Color.FromArgb(226, 244, 237);
+        private static readonly Color Accent = Color.FromArgb(101, 64, 175);
+        private static readonly Color Guide = Color.FromArgb(237, 229, 254);
         public Score Music { get; private set; }
         public ScoreLayout Engraving { get; private set; }
         public int Page;
