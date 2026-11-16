@@ -6,8 +6,8 @@ using System.Windows.Forms;
 [assembly: AssemblyTitle("Vale Score")]
 [assembly: AssemblyProduct("Vale Score")]
 [assembly: AssemblyDescription("Editor desktop de partituras")]
-[assembly: AssemblyVersion("0.11.0.0")]
-[assembly: AssemblyFileVersion("0.11.0.0")]
+[assembly: AssemblyVersion("0.12.0.0")]
+[assembly: AssemblyFileVersion("0.12.0.0")]
 
 namespace ValeScore
 {

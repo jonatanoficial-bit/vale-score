@@ -34,6 +34,8 @@ namespace ValeScore
         private readonly TransportRail transportRail = new TransportRail();
         private readonly ComboBox midiOutput = new ComboBox();
         private readonly ToolStripMenuItem metronome = new ToolStripMenuItem("Metrônomo da partitura") { CheckOnClick = true };
+        private readonly ToolStripMenuItem followPlayback = new ToolStripMenuItem("Acompanhar cursor na partitura")
+            { CheckOnClick = true, Checked = true };
         private readonly ToolStripMenuItem inputMenu = new ToolStripMenuItem("Teclado MIDI");
         private readonly ContextMenuStrip exportMenu = new ContextMenuStrip();
         private readonly List<Button> durationButtons = new List<Button>();
@@ -63,7 +65,8 @@ namespace ValeScore
         private string midiName;
         private bool playingMidiFile;
         private double playbackLength;
-        private double playbackSpeed = 1;
+        private PlaybackRange activeRange;
+        private readonly StaffPosition playbackCursor = new StaffPosition();
         private readonly ComboBox speedControl = new ComboBox();
         private static readonly double[] PlaybackSpeeds = { .5, .75, 1, 1.25, 1.5 };
         private bool preparing, syncingTracks, editingLyric;
@@ -150,8 +153,12 @@ namespace ValeScore
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
             var playbackMenu = new ToolStripMenuItem("Reprodução");
             Item(playbackMenu, "Tocar ou parar partitura", Keys.None, Play);
+            Item(playbackMenu, "Ensaiar trecho…", Keys.Control | Keys.J, SelectPlaybackRange);
+            Item(playbackMenu, "Tocar a partir do compasso atual", Keys.None, PlayFromCurrentBar);
             playbackMenu.DropDownItems.Add(metronome);
             metronome.ForeColor = TextColor;
+            playbackMenu.DropDownItems.Add(followPlayback);
+            followPlayback.ForeColor = TextColor;
             Item(playbackMenu, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
             Item(playbackMenu, "Tocar ou parar MIDI aberto", Keys.None, PlayLoadedMidi);
             playbackMenu.DropDownItems.Add(inputMenu);
@@ -312,6 +319,9 @@ namespace ValeScore
             playButton.Width = 87;
             playButton.BackColor = Accent;
             transportControls.Controls.Add(playButton);
+            var rangeButton = Button("Trecho…", SelectPlaybackRange);
+            figureTips.SetToolTip(rangeButton, "Escolher compassos para ensaio (Ctrl+J)");
+            transportControls.Controls.Add(rangeButton);
             transportControls.Controls.Add(Button("Abrir MIDI…", OpenMidi));
             midiOutput.DropDownStyle = ComboBoxStyle.DropDownList;
             midiOutput.AccessibleName = "Saída de áudio ou MIDI";
@@ -333,7 +343,7 @@ namespace ValeScore
             transportControls.Controls.Add(speedControl);
             playbackLabel.Text = "0:00 / 0:00";
             playbackLabel.AutoSize = false;
-            playbackLabel.Width = 118;
+            playbackLabel.Width = 86;
             playbackLabel.Height = 33;
             playbackLabel.TextAlign = ContentAlignment.MiddleCenter;
             playbackLabel.ForeColor = Lavender;
@@ -377,21 +387,28 @@ namespace ValeScore
 
             timer.Tick += delegate
             {
-                UpdateTransport(clock.Elapsed.TotalSeconds);
-                if (playingMidiFile)
-                {
-                    if (midiCancellation == null && clock.Elapsed.TotalSeconds >= playbackLength) Stop();
-                    return;
-                }
-                int tick = (int)(clock.Elapsed.TotalSeconds * score.Tempo * playbackSpeed / 15);
-                if (tick >= score.Bars * score.BarTicks)
+                double elapsed = clock.Elapsed.TotalSeconds;
+                var range = activeRange;
+                UpdateTransport(range == null ? elapsed : range.Position(elapsed));
+                if ((range == null || !range.Loop) && elapsed >= playbackLength)
                 {
                     if (midiCancellation == null) Stop();
+                    return;
                 }
-                else if (tick != sheet.Playing)
+                if (playingMidiFile || range == null) return;
+                int tick = range.TickAt(elapsed);
+                if (tick != sheet.Playing)
                 {
                     sheet.Playing = tick;
-                    ChangePage(sheet.Engraving.PageOf(tick));
+                    if (followPlayback.Checked)
+                    {
+                        ChangePage(sheet.Engraving.PageOf(tick));
+                        playbackCursor.Tick = tick;
+                        playbackCursor.Part = position.Part;
+                        playbackCursor.Staff = position.Staff;
+                        RevealCursor(playbackCursor);
+                    }
+                    else sheet.Invalidate();
                 }
             };
             FormClosing += (sender, args) =>
@@ -782,10 +799,11 @@ namespace ValeScore
             PlaceLyricEntry();
         }
 
-        private void RevealCursor()
+        private void RevealCursor(StaffPosition targetPosition = null)
         {
-            if (sheet.Engraving == null || sheet.Engraving.PageOf(position.Tick) != sheet.Page) return;
-            Point target = sheet.OnSheet(position, editingLyric ? ScoreLayout.LyricY + 12 : 32);
+            targetPosition = targetPosition ?? position;
+            if (sheet.Engraving == null || sheet.Engraving.PageOf(targetPosition.Tick) != sheet.Page) return;
+            Point target = sheet.OnSheet(targetPosition, editingLyric ? ScoreLayout.LyricY + 12 : 32);
             Point view = new Point(sheet.Left + target.X, sheet.Top + target.Y);
             Point current = surface.AutoScrollPosition;
             int margin = editingLyric ? Math.Min(104, surface.ClientSize.Width / 2) : 38;
@@ -1633,7 +1651,42 @@ namespace ValeScore
 
         private void Play() { StartPlayback(null); }
 
-        private async void StartPlayback(MidiSequence file)
+        private void PlayFromCurrentBar()
+        {
+            StartPlayback(null, position.Tick / score.BarTicks, score.Bars - 1);
+        }
+
+        private void SelectPlaybackRange()
+        {
+            if (!CommitLyric()) return;
+            if (preparing || timer.Enabled) { Report("Pare a reprodução para escolher outro trecho."); return; }
+            int currentBar = position.Tick / score.BarTicks + 1;
+            using (var dialog = new Form { Text = "Ensaiar trecho", ClientSize = new Size(342, 181),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MinimizeBox = false, MaximizeBox = false, Font = Font })
+            {
+                var first = new NumericUpDown { Minimum = 1, Maximum = score.Bars, Value = currentBar,
+                    AccessibleName = "Compasso inicial", Bounds = new Rectangle(177, 17, 142, 27) };
+                var last = new NumericUpDown { Minimum = 1, Maximum = score.Bars, Value = currentBar,
+                    AccessibleName = "Compasso final", Bounds = new Rectangle(177, 56, 142, 27) };
+                first.ValueChanged += delegate { if (first.Value > last.Value) last.Value = first.Value; };
+                last.ValueChanged += delegate { if (last.Value < first.Value) first.Value = last.Value; };
+                var loop = new CheckBox { Text = "Repetir em loop", AutoSize = true, Checked = true, Location = new Point(18, 100) };
+                var play = new Button { Text = "Tocar", DialogResult = DialogResult.OK, Bounds = new Rectangle(139, 135, 85, 28) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(234, 135, 85, 28) };
+                dialog.Controls.AddRange(new Control[] {
+                    new Label { Text = "Compasso inicial", AutoSize = true, Location = new Point(18, 19) }, first,
+                    new Label { Text = "Compasso final", AutoSize = true, Location = new Point(18, 58) }, last,
+                    loop, play, cancel
+                });
+                dialog.AcceptButton = play;
+                dialog.CancelButton = cancel;
+                if (dialog.ShowDialog(this) == DialogResult.OK)
+                    StartPlayback(null, (int)first.Value - 1, (int)last.Value - 1, loop.Checked);
+            }
+        }
+
+        private async void StartPlayback(MidiSequence file, int firstBar = 0, int? lastBar = null, bool loop = false)
         {
             if (!CommitLyric()) return;
             if (preparing || timer.Enabled) { Stop(); return; }
@@ -1652,9 +1705,14 @@ namespace ValeScore
             midiCancellation = cancellation;
             try
             {
-                playbackSpeed = file == null ? PlaybackSpeeds[speedControl.SelectedIndex] : 1;
-                double speed = playbackSpeed;
-                playbackLength = (file == null ? score.Bars * score.BarTicks * 15.0 / score.Tempo : file.Duration) / speed;
+                double speed = file == null ? PlaybackSpeeds[speedControl.SelectedIndex] : 1;
+                int last = lastBar ?? score.Bars - 1;
+                var range = file == null ? new PlaybackRange(score, firstBar, last, speed, loop) : null;
+                activeRange = range;
+                var snapshot = range == null ? null : score.ExtractBars(firstBar, last);
+                playbackLength = range == null ? file.Duration : range.Duration;
+                string description = range == null ? midiName : lastBar == null ? "Partitura" :
+                    "Compassos " + (firstBar + 1) + "–" + (last + 1) + (loop ? " · Loop" : "");
                 UpdateTransport(0);
                 if (output != null)
                 {
@@ -1663,34 +1721,34 @@ namespace ValeScore
                     {
                         using (var buffer = new MemoryStream())
                         {
-                            MidiSequence.Export(score, buffer);
+                            MidiSequence.Export(snapshot, buffer);
                             buffer.Position = 0;
                             sequence = MidiSequence.Read(buffer);
                         }
                     }
-                    if (file == null) ChangePage(0);
+                    if (range != null) ChangePage(sheet.Engraving.PageOf(range.FirstTick));
                     preparing = false;
                     timer.Start();
-                    Report(file == null ? "Partitura · " + output.Name : midiName + " · " + output.Name);
-                    midiPlaybackTask = MidiDevices.Play(sequence, output, clock, cancellation.Token, speed);
+                    Report(description + " · " + output.Name);
+                    midiPlaybackTask = MidiDevices.Play(sequence, output, clock, cancellation.Token, speed, loop);
                     await midiPlaybackTask;
                     if (generation == playbackGeneration && !IsDisposed) Stop();
                     return;
                 }
 
-                var snapshot = file == null ? Score.Restore(score.Snapshot()) : null;
                 bool click = metronome.Checked;
                 var wave = await Task.Run(() => file == null ? Output.Wave(snapshot, click, speed) : Output.MidiWave(file, cancellation.Token));
                 if (generation != playbackGeneration || IsDisposed) { wave.Dispose(); return; }
                 playback = wave;
                 player = new SoundPlayer(playback);
                 player.Load();
-                player.Play();
+                if (loop) player.PlayLooping();
+                else player.Play();
                 preparing = false;
                 clock.Restart();
-                if (file == null) ChangePage(0);
+                if (range != null) ChangePage(sheet.Engraving.PageOf(range.FirstTick));
                 timer.Start();
-                Report(file == null ? "Partitura · Som interno" : midiName + " · Som interno");
+                Report(description + " · Som interno");
             }
             catch (OperationCanceledException) { }
             catch (Exception ex)
@@ -1723,6 +1781,7 @@ namespace ValeScore
             bool wasPlaying = preparing || timer.Enabled;
             preparing = false;
             playingMidiFile = false;
+            activeRange = null;
             if (midiCancellation != null) midiCancellation.Cancel();
             timer.Stop();
             clock.Reset();

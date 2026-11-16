@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.11.0 · Prévia para Windows x64**
+**0.12.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.11.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.11.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.12.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.12.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -33,6 +33,12 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.12
+
+- **Ctrl+J** ou **Trecho…** abre o ensaio por intervalo de compassos. Escolha tocar uma vez ou repetir em loop. **Reprodução → Tocar a partir do compasso atual** inicia no cursor e segue até o fim.
+- O trecho usa a velocidade escolhida no transporte e conserva pausas, articulações e a dinâmica vigente no início. Funciona com som interno e com saída MIDI selecionada.
+- O cursor de reprodução também aparece durante as pausas. **Reprodução → Acompanhar cursor na partitura** controla a rolagem e a troca automática de páginas.
 
 ## Novidades da 0.11
 

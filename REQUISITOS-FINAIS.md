@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.11.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.12.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -211,7 +211,7 @@ Base da matriz: prévia 0.11.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 11.09 | Automação de controladores MIDI | Pendente | |
 | 11.10 | Mapas de tempo e mudanças graduais | Parcial | |
 | 11.11 | Reprodução de repetições e saltos | Pendente | |
-| 11.12 | Reprodução cíclica de trechos | Pendente | |
+| 11.12 | Reprodução cíclica de trechos | Parcial | Intervalos de compassos inteiros. [Testes de recorte e temporização](tests/Smoke.cs). Teste em hardware MIDI pendente. |
 | 11.13 | Humanização e swing | Pendente | |
 | 11.14 | Efeitos de áudio, reverberação e processamento | Pendente | |
 | 11.15 | Configuração de dispositivos e motor de áudio | Parcial | |
@@ -243,7 +243,7 @@ Base da matriz: prévia 0.11.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 13.03 | Partes individuais para ensaios | Parcial | [Extração de instrumento](tests/Smoke.cs). Exportação MusicXML independente. Layout de partes vinculado pendente. |
 | 13.04 | Indicações de ensaio e referências de compasso | Pendente | |
 | 13.05 | Metrônomo e reprodução em velocidade ajustada | Parcial | Metrônomo com som interno e velocidade da partitura de 50% a 150%. [Testes](tests/Smoke.cs). |
-| 13.06 | Loop de trechos para estudo | Pendente | |
+| 13.06 | Loop de trechos para estudo | Parcial | Ctrl+J configura o trecho e o loop por compasso. [Testes](tests/Smoke.cs). |
 | 13.07 | Acompanhamento por instrumentos virtuais | Parcial | |
 | 13.08 | Preparação de reduções para piano | Pendente | |
 | 13.09 | Transposição de peças para outros instrumentos | Pendente | |

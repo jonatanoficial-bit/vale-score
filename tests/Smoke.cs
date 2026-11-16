@@ -26,6 +26,51 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var practice = Score.New(false);
+        practice.SetMeter(6, 8);
+        practice.SetKey(-2, false);
+        practice.Put(0, 0, 0, 4, 28, 0);
+        practice.SetExpression(0, 0, 0, null, "p");
+        practice.Put(0, 0, 14, 2, 29, 0);
+        practice.SetArticulation(0, 0, 14, "staccato");
+        practice.Put(0, 0, 24, 4, 31, 0);
+        practice.SetExpression(0, 0, 24, null, "f");
+        var uncropped = practice.Snapshot();
+        var passage = practice.ExtractBars(1, 2);
+        var practiceNotes = passage.Parts[0].Staves[0];
+        Assert(passage.Bars == 2 && passage.BarTicks == 12 && passage.Fifths == -2 &&
+            practiceNotes.Select(n => n.Tick).SequenceEqual(new[] { 2, 12 }) && uncropped.SequenceEqual(practice.Snapshot()),
+            "Trecho preserva pulso, armadura e posições relativas sem alterar o original");
+        Assert(practiceNotes[0].Dynamic == "p" && practiceNotes[0].Articulation == "staccato" &&
+            practiceNotes[1].Dynamic == "f", "Trecho conserva dinâmica anterior e marcas internas");
+        var loop = new PlaybackRange(practice, 1, 2, .75, true);
+        var once = new PlaybackRange(practice, 1, 2, .75, false);
+        Assert(loop.TickAt(0) == 12 && loop.TickAt(loop.Duration + 3.25 * loop.TickSeconds) == 15 &&
+            once.TickAt(10 * once.Duration) == 35, "Cursor repete no compasso de início e para no fim sem loop");
+        var practiceLayout = new ScoreLayout(practice);
+        var cursorMeasure = practiceLayout.MeasureOf(1);
+        var onPage = new StaffPosition { Tick = 12 };
+        var cursorPoint = practiceLayout.Position(practice, onPage);
+        using (var frame = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var graphics = Graphics.FromImage(frame))
+        {
+            graphics.Clear(Color.White);
+            ScorePage.Draw(graphics, practice, practiceLayout, practiceLayout.PageOf(12), null, 12, null);
+            Assert(Enumerable.Range((int)cursorMeasure.At(0) - 1, 4)
+                .Any(x => { var pixel = frame.GetPixel(x, (int)cursorPoint.Y + 43); return pixel.B > pixel.R + 8; }),
+                "Cursor de reprodução aparece também em posição silenciosa");
+        }
+        using (var wave = Output.Wave(passage, false, .75))
+        using (var midi = new MemoryStream())
+        {
+            MidiSequence.Export(passage, midi);
+            midi.Position = 0;
+            var sequence = MidiSequence.Read(midi);
+            var firstAttack = sequence.Events.First(e => (e.Status & 240) == 0x90);
+            Assert(Math.Abs((wave.Length - 44) / 2.0 / Output.SampleRate - loop.Duration) < .001 &&
+                Math.Abs(sequence.Duration / .75 - loop.Duration) < .001 && firstAttack.Tick == 240 && firstAttack.Data2 == 49,
+                "Áudio e MIDI do trecho respeitam duração, pausa inicial e dinâmica");
+        }
         var tonal = Score.New(false);
         tonal.SetMeter(6, 8);
         tonal.SetKey(-2, true);

@@ -419,6 +419,24 @@ namespace ValeScore
             return copy;
         }
 
+        public Score ExtractBars(int first, int last)
+        {
+            if (first < 0 || last < first || last >= Bars) throw new ArgumentOutOfRangeException("first");
+            var copy = Restore(Snapshot());
+            int start = first * BarTicks;
+            int end = (last + 1) * BarTicks;
+            foreach (var staff in copy.Parts.SelectMany(p => p.Staves))
+            {
+                var prior = staff.LastOrDefault(n => n.Tick < start && n.Dynamic != null);
+                staff.RemoveAll(n => n.Tick < start || n.Tick >= end);
+                var firstNote = staff.Find(n => !n.IsRest);
+                if (firstNote != null && firstNote.Dynamic == null && prior != null) firstNote.Dynamic = prior.Dynamic;
+                foreach (var note in staff) note.Tick -= start;
+            }
+            copy.Bars = last - first + 1;
+            return copy;
+        }
+
         public static int BeamGroupEnd(IList<Note> events, int index, int barStart, int beatSize)
         {
             var first = events[index];

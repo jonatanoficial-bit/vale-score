@@ -70,7 +70,7 @@ namespace ValeScore
             return devices;
         }
 
-        public static Task Play(MidiSequence sequence, Device device, Stopwatch clock, CancellationToken cancellation, double speed)
+        public static Task Play(MidiSequence sequence, Device device, Stopwatch clock, CancellationToken cancellation, double speed, bool loop)
         {
             return Task.Run(() =>
             {
@@ -80,13 +80,19 @@ namespace ValeScore
                 {
                     cancellation.ThrowIfCancellationRequested();
                     clock.Restart();
-                    foreach (var item in sequence.Events)
+                    double cycleLength = sequence.Duration / speed;
+                    double cycleStart = 0;
+                    do
                     {
-                        WaitUntil(clock, item.Seconds / speed, cancellation);
-                        Check(midiOutShortMsg(handle, (uint)(item.Status | (item.Data1 << 8) | (item.Data2 << 16))),
-                            "enviar um evento MIDI");
-                    }
-                    WaitUntil(clock, sequence.Duration / speed, cancellation);
+                        foreach (var item in sequence.Events)
+                        {
+                            WaitUntil(clock, cycleStart + item.Seconds / speed, cancellation);
+                            Check(midiOutShortMsg(handle, (uint)(item.Status | (item.Data1 << 8) | (item.Data2 << 16))),
+                                "enviar um evento MIDI");
+                        }
+                        cycleStart += cycleLength;
+                        WaitUntil(clock, cycleStart, cancellation);
+                    } while (loop && cycleLength > 0);
                 }
                 finally
                 {

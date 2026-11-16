@@ -150,6 +150,7 @@ namespace ValeScore
             using (var accent = new SolidBrush(Accent))
             using (var ghost = new SolidBrush(Color.FromArgb(104, Accent)))
             using (var guide = new SolidBrush(Guide))
+            using (var cursor = new Pen(Color.FromArgb(125, Accent), 1.1f))
             using (var small = new Font("Segoe UI", 8))
             using (var credits = new Font("Georgia", 11, FontStyle.Italic))
             using (var title = new Font("Georgia", 24))
@@ -193,6 +194,12 @@ namespace ValeScore
                             int y = layout.StaffTop(system, row);
                             bool laneSelected = selected != null && selected.Part == part && selected.Staff == staff;
                             var lane = instrument.Staves[staff];
+                            if (playing >= first * score.BarTicks && playing < after * score.BarTicks)
+                            {
+                                var measure = layout.MeasureOf(playing / score.BarTicks);
+                                float x = measure.At(playing % score.BarTicks);
+                                g.DrawLine(cursor, x, y - 8, x, y + 46);
+                            }
                             if (laneSelected && selected.Tick >= first * score.BarTicks && selected.Tick < after * score.BarTicks)
                             {
                                 var measure = layout.MeasureOf(selected.Tick / score.BarTicks);
