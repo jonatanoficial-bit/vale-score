@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.13.0 · Prévia para Windows x64**
+**0.14.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.13.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.13.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.14.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.14.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -33,6 +33,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.14
+
+- A área de edição ganhou uma paleta visual redesenhada, contraste distinto para passos ativos e foco por teclado, e uma página de partitura mais fácil de distinguir da mesa de trabalho.
+- **Ctrl+K** busca comandos por nome ou categoria, aceitando palavras sem acentos. Use as setas e **Enter** para escolher e executar.
+- **Ctrl+N** oferece seis modelos de formação e permite reutilizar os instrumentos, a armadura, a fórmula e o andamento do projeto atual em uma nova partitura vazia.
+- **Editar → Renomear instrumento selecionado** atualiza a pauta e a identificação das exportações.
 
 ## Novidades da 0.13
 

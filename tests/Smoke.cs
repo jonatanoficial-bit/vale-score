@@ -26,6 +26,19 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        Assert(ScoreTemplate.Library.Length == 6 && ScoreTemplate.Library.All(template => template.Create().Parts.Count >= 1),
+            "Seis modelos geram projetos válidos");
+        var ensemble = ScoreTemplate.Library.Last().Create();
+        Assert(ensemble.Parts.Select(part => part.Staves.Count).SequenceEqual(new[] { 2, 2, 2, 1 }),
+            "Modelo para três pianos e violão abre sete pautas");
+        ensemble.RenamePart(0, "Piano principal");
+        ensemble.SetMeter(6, 8);
+        ensemble.SetKey(2, false);
+        ensemble.Put(0, 0, 0, 4, 28, 0);
+        var blankArrangement = ensemble.EmptyArrangement();
+        Assert(blankArrangement.Parts[0].Name == "Piano principal" && blankArrangement.BarTicks == 12 &&
+            blankArrangement.Fifths == 2 && blankArrangement.Parts.All(part => part.Staves.All(lane => lane.Count == 0)) &&
+            ensemble.Parts[0].Staves[0].Count == 1, "Formação reutilizada abre vazia e preserva a original");
         var publicationScore = Score.New(true);
         publicationScore.Bars = 8;
         publicationScore.AddPart("Piano");
@@ -524,6 +537,31 @@ internal static class Smoke
             }
             var type = typeof(Editor);
             var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            var catalog = ((System.Collections.IEnumerable)type.GetField("commands", flags).GetValue(editor)).Cast<object>().ToArray();
+            Assert(catalog.Length > 30 && catalog.Any(command => command.ToString().Contains("Buscar comandos")) == false,
+                "Catálogo registra ações executáveis e evita buscar a si mesmo");
+            object[] searchMatches = catalog.Where(command =>
+                (bool)command.GetType().GetMethod("Matches").Invoke(command, new object[] { "formula compasso" })).ToArray();
+            Assert(searchMatches.Length == 1 && searchMatches[0].ToString().Contains("Fórmula de compasso"),
+                "Busca encontra comandos por palavras sem acentos");
+            var pickerType = type.Assembly.GetType("ValeScore.QuickPicker", true);
+            using (var picker = (Form)Activator.CreateInstance(pickerType, new object[] {
+                "Comandos do Vale Score", "Qual ação você quer executar?", type.GetField("commands", flags).GetValue(editor), "Executar" }))
+            {
+                picker.Show();
+                Application.DoEvents();
+                var search = picker.Controls.OfType<TextBox>().Single();
+                search.Text = "transpor";
+                var matches = picker.Controls.OfType<ListBox>().Single();
+                Assert(matches.Items.Count == 1 && matches.SelectedItem.ToString().StartsWith("Transpor"),
+                    "Busca na janela filtra e seleciona uma ação real");
+                using (var capture = new Bitmap(picker.Width, picker.Height))
+                {
+                    picker.DrawToBitmap(capture, new Rectangle(Point.Empty, picker.Size));
+                    capture.Save(Path.Combine(directory, "comandos.png"));
+                }
+                picker.Close();
+            }
             var output = (ComboBox)type.GetField("midiOutput", flags).GetValue(editor);
             Assert(output.Items.Count > 0 && (string)output.Items[0] == "Som interno", "Transporte oferece som interno sem dispositivo MIDI");
             var model = type.GetField("score", flags);

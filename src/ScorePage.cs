@@ -16,9 +16,9 @@ namespace ValeScore
     public sealed class ScorePage : Control
     {
         public const int PageWidth = 780, PageHeight = 1100;
-        private static readonly Color Ink = Color.FromArgb(31, 36, 42);
-        private static readonly Color Accent = Color.FromArgb(101, 64, 175);
-        private static readonly Color Guide = Color.FromArgb(237, 229, 254);
+        private static readonly Color Ink = Color.FromArgb(29, 34, 33);
+        private static readonly Color Accent = Color.FromArgb(20, 103, 108);
+        private static readonly Color Guide = Color.FromArgb(215, 242, 235);
         public Score Music { get; private set; }
         public ScoreLayout Engraving { get; private set; }
         public int Page;
@@ -34,7 +34,7 @@ namespace ValeScore
         public ScorePage()
         {
             DoubleBuffered = true;
-            BackColor = Color.FromArgb(255, 254, 251);
+            BackColor = Color.FromArgb(255, 254, 248);
             AccessibleName = "Página da partitura";
             TabStop = false;
             SetZoom(1);
@@ -162,7 +162,9 @@ namespace ValeScore
                 {
                     g.DrawString(score.Title, title, ink, new RectangleF(44, 52, layout.Width - 88, 86), center);
                     g.DrawString(score.Author, credits, ink, new RectangleF(48, 122, layout.Width - 96, 24), right);
-                    g.DrawString("Andamento  " + score.Tempo + " bpm", small, ink, 47, 145);
+                    MusicGlyphs.Head(g, ink, 52, 151, 4);
+                    MusicGlyphs.Stem(g, ink, 52, 151, -1, 134);
+                    g.DrawString("= " + score.Tempo, small, ink, 64, 140);
                 }
                 else g.DrawString(score.Title, credits, ink, 47, 113);
 

@@ -5,7 +5,7 @@ using System.Windows.Forms;
 
 namespace ValeScore
 {
-    internal sealed class MusicButton : Button
+    internal sealed class MusicButton : StudioButton
     {
         private readonly Action<Graphics, Brush> draw;
 
@@ -26,7 +26,7 @@ namespace ValeScore
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
             e.Graphics.TranslateTransform(ClientSize.Width / 2f, ClientSize.Height / 2f);
             e.Graphics.ScaleTransform(ClientSize.Height / 41f, ClientSize.Height / 41f);
-            using (var ink = new SolidBrush(Enabled ? ForeColor : SystemColors.GrayText)) draw(e.Graphics, ink);
+            using (var ink = new SolidBrush(GlyphColor)) draw(e.Graphics, ink);
             e.Graphics.Restore(state);
         }
 

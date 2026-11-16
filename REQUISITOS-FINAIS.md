@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.13.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.14.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -27,7 +27,7 @@ Base da matriz: prévia 0.13.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 01.03 | Múltiplos layouts e configurações de impressão | Parcial | Prévia configurável para partitura e parte. Layouts persistentes pendentes. |
 | 01.04 | Instrumentistas que alternam instrumentos durante a obra | Pendente | |
 | 01.05 | Conjuntos de câmara, coral, banda, big band e orquestra | Pendente | |
-| 01.06 | Templates de instrumentação e modelos personalizados | Pendente | |
+| 01.06 | Templates de instrumentação e modelos personalizados | Parcial | Seis modelos e reutilização da formação atual. Biblioteca personalizada persistente pendente. [Suíte Windows](tests/Smoke.cs). |
 | 01.07 | Partes separadas e partitura do regente | Pendente | |
 | 01.08 | Organização de instrumentos, pautas e grupos | Parcial | |
 | 01.09 | Alterações de instrumento, clave e transposição | Pendente | |
@@ -51,7 +51,7 @@ Base da matriz: prévia 0.13.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 02.11 | Distribuição de vozes e instrumentos | Pendente | |
 | 02.12 | Mudanças globais de duração e ritmo | Pendente | |
 | 02.13 | Desfazer/refazer e histórico de edição | Parcial | |
-| 02.14 | Comandos rápidos e barra de busca/ações | Pendente | |
+| 02.14 | Comandos rápidos e barra de busca/ações | Parcial | Catálogo de edição, reprodução e exportação com Ctrl+K. [Teste de busca](tests/Smoke.cs). |
 | 02.15 | Atalhos configuráveis e fluxos de trabalho com teclado | Parcial | |
 
 ## 03 · Ritmo, métrica e compassos
@@ -281,7 +281,7 @@ Base da matriz: prévia 0.13.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 15.08 | Sintetizador interno leve e VST3 opcional em fase posterior | Parcial | |
 | 15.09 | Testes de altura, ritmo, anacruse, vozes e transposição | Parcial | |
 | 15.10 | Testes visuais de paginação e prevenção de colisões | Parcial | |
-| 15.11 | Acessibilidade, atalhos e interface premium | Parcial | |
+| 15.11 | Acessibilidade, atalhos e interface premium | Parcial | Paleta de símbolos com foco e rótulos acessíveis, busca navegável por teclado e nova área de edição. Auditoria de acessibilidade pendente. |
 | 15.12 | Matriz de recursos implementados, planejados e testados | Parcial | |
 | 15.13 | Compatibilidade real com Kontakt/Reason somente após ensaios | Pendente | |
 | 15.14 | Controle de desempenho e estabilidade em máquinas modestas | Pendente | |

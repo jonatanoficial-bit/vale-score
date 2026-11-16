@@ -419,6 +419,23 @@ namespace ValeScore
             return copy;
         }
 
+        public Score EmptyArrangement()
+        {
+            var copy = Restore(Snapshot());
+            copy.Title = "Partitura sem título";
+            copy.Author = "";
+            foreach (var staff in copy.Parts.SelectMany(part => part.Staves)) staff.Clear();
+            return copy;
+        }
+
+        public void RenamePart(int index, string name)
+        {
+            var clean = (name ?? "").Trim();
+            if (clean.Length == 0 || clean.Length > 40 || clean.Any(char.IsControl))
+                throw new InvalidOperationException("O nome deve conter de 1 a 40 caracteres.");
+            Parts[index].Name = clean;
+        }
+
         public Score ExtractBars(int first, int last)
         {
             if (first < 0 || last < first || last >= Bars) throw new ArgumentOutOfRangeException("first");
