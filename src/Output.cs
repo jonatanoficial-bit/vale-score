@@ -227,7 +227,8 @@ namespace ValeScore
                             xml.WriteStartElement("attributes");
                             xml.WriteElementString("divisions", "4");
                             xml.WriteStartElement("key");
-                            xml.WriteElementString("fifths", "0");
+                            xml.WriteElementString("fifths", score.Fifths.ToString());
+                            xml.WriteElementString("mode", score.MinorKey ? "minor" : "major");
                             xml.WriteEndElement();
                             xml.WriteStartElement("time");
                             xml.WriteElementString("beats", score.Beats.ToString());
@@ -264,6 +265,7 @@ namespace ValeScore
                             var lane = part.Staves[staff];
                             var previous = lane.LastOrDefault(n => n.Tick < start && !n.IsRest);
                             var events = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
+                            var accidentals = new Dictionary<int, int>();
                             int groupStart = 0, groupEnd = 0;
                             for (int i = 0; i < events.Length; i++)
                             {
@@ -283,8 +285,15 @@ namespace ValeScore
                                 ChordSymbol chord;
                                 if (note.Chord != null && ChordSymbol.TryParse(note.Chord, out chord)) chord.Write(xml, staff, part.Staves.Count > 1);
                                 if (note.Dynamic != null) WriteDynamic(xml, note.Dynamic, staff, part.Staves.Count > 1);
-                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1, previous != null && previous.HyphenAfter, beam);
-                                if (!note.IsRest) previous = note;
+                                bool showAccidental = !note.IsRest && (note.Courtesy ||
+                                    KeySignature.Prior(score.Fifths, accidentals, note.Step) != note.Alter);
+                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1,
+                                    previous != null && previous.HyphenAfter, beam, showAccidental: showAccidental);
+                                if (!note.IsRest)
+                                {
+                                    previous = note;
+                                    accidentals[note.Step] = note.Alter;
+                                }
                                 cursor += note.Length;
                             }
                             while (cursor < end)
@@ -319,7 +328,8 @@ namespace ValeScore
             xml.WriteEndElement();
         }
 
-        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false, string beam = null, bool fullMeasure = false)
+        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano,
+            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false)
         {
             xml.WriteStartElement("note");
             if (note == null || note.IsRest)
@@ -340,6 +350,17 @@ namespace ValeScore
             xml.WriteElementString("voice", (staff + 1).ToString());
             if (!fullMeasure) xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, Score.BaseDuration(length))]);
             for (int i = 0; !fullMeasure && i < Score.DotCount(length); i++) xml.WriteElementString("dot", "");
+            if (showAccidental)
+            {
+                xml.WriteStartElement("accidental");
+                if (note.Courtesy)
+                {
+                    xml.WriteAttributeString("cautionary", "yes");
+                    xml.WriteAttributeString("parentheses", "yes");
+                }
+                xml.WriteString(KeySignature.AccidentalName(note.Alter));
+                xml.WriteEndElement();
+            }
             if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
             if (beam != null)
             {

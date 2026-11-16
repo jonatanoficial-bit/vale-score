@@ -26,7 +26,8 @@ namespace ValeScore
         public StaffPosition Selection, Hover;
         public bool ShowEntryPreview;
         public bool PreviewRest;
-        public int PreviewLength = 4, PreviewAlter;
+        public int PreviewLength = 4;
+        public int? PreviewAlter;
         public Action<StaffPosition, MouseButtons> Pick;
         public float Zoom { get; private set; }
 
@@ -93,7 +94,7 @@ namespace ValeScore
 
         public StaffPosition Hit(float x, float y)
         {
-            if (Engraving == null || x < ScoreLayout.StaffLeft || x >= ScoreLayout.StaffRight) return null;
+            if (Engraving == null || x < Engraving.MeasureLeft || x >= ScoreLayout.StaffRight) return null;
             int lastRow = Music.Parts.Sum(p => p.Staves.Count) - 1;
             int system = 0;
             foreach (var measures in Engraving.OnPage(Page))
@@ -139,7 +140,7 @@ namespace ValeScore
         }
 
         public static void Draw(Graphics g, Score score, ScoreLayout layout, int page, StaffPosition selected, int playing, StaffPosition hover,
-            int previewLength = 4, bool previewRest = false, int previewAlter = 0)
+            int previewLength = 4, bool previewRest = false, int? previewAlter = null)
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAliasGridFit;
@@ -202,10 +203,12 @@ namespace ValeScore
 
                             for (int i = 0; i < 5; i++) g.DrawLine(staffLine, 47, y + 10 * i, endX, y + 10 * i);
                             DrawClef(g, ink, line, staff, y);
+                            DrawKey(g, ink, score.Fifths, staff, y);
                             if (first == 0)
                             {
-                                g.DrawString(score.Beats.ToString(), meter, ink, score.Beats >= 10 ? 91 : 99, y - 4);
-                                g.DrawString(score.BeatType.ToString(), meter, ink, 99, y + 16);
+                                int shift = layout.MeasureLeft - ScoreLayout.StaffLeft;
+                                g.DrawString(score.Beats.ToString(), meter, ink, shift + (score.Beats >= 10 ? 91 : 99), y - 4);
+                                g.DrawString(score.BeatType.ToString(), meter, ink, shift + 99, y + 16);
                             }
                             g.DrawLine(line, endX, y, endX, y + 40);
                             if (after == score.Bars) g.FillRectangle(ink, endX + 3, y, 3, 41);
@@ -214,7 +217,7 @@ namespace ValeScore
                             {
                                 g.DrawLine(line, measure.Left, y, measure.Left, y + 40);
                                 if (row == 0) g.DrawString((measure.Index + 1).ToString(), small, ink, measure.Left + 4, y - 20);
-                                DrawMeasure(g, ink, accent, line, measure, lane, staff, y, score.BeatTicks, laneSelected ? selected.Tick : -1, playing);
+                                DrawMeasure(g, ink, accent, line, measure, lane, staff, y, score, laneSelected ? selected.Tick : -1, playing);
                             }
 
                             DrawLyrics(g, layout, lane, first, after, y, score.BarTicks, ink, center);
@@ -242,8 +245,10 @@ namespace ValeScore
                                 }
                                 else
                                 {
+                                    int prior = score.InputAccidental(part, staff, hover.Tick, hover.Step);
+                                    int alter = previewAlter ?? prior;
                                     using (var previewLine = new Pen(ghost, 1))
-                                        DrawNote(g, ghost, previewLine, x, y, hover.Step - BottomStep(staff), previewLength, previewAlter, previewAlter != 0);
+                                        DrawNote(g, ghost, previewLine, x, y, hover.Step - BottomStep(staff), previewLength, alter, alter != prior);
                                 }
                             }
                         }
@@ -298,6 +303,12 @@ namespace ValeScore
             }
         }
 
+        private static void DrawKey(Graphics g, Brush brush, int fifths, int staff, int y)
+        {
+            for (int i = 0; i < Math.Abs(fifths); i++)
+                MusicGlyphs.Accidental(g, brush, 91 + 11 * i, y + 40 - KeySignature.StaffPosition(fifths, staff, i) * 5, Math.Sign(fifths));
+        }
+
         private static void DrawClef(Graphics g, Brush brush, Pen pen, int staff, int y)
         {
             using (var path = new GraphicsPath())
@@ -338,8 +349,9 @@ namespace ValeScore
         }
 
         private static void DrawMeasure(Graphics g, Brush ink, Brush accent, Pen line, ScoreLayout.Measure measure,
-            List<Note> lane, int staff, int top, int beatTicks, int selected, int playing)
+            List<Note> lane, int staff, int top, Score score, int selected, int playing)
         {
+            int beatTicks = score.BeatTicks;
             int start = measure.Index * measure.TickCount;
             int end = start + measure.TickCount;
             var events = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
@@ -380,10 +392,10 @@ namespace ValeScore
                     if (n.IsRest) DrawRest(g, color, x, top, n.Length);
                     else
                     {
-                        int prior;
-                        accidentals.TryGetValue(n.Step, out prior);
+                        int prior = KeySignature.Prior(score.Fifths, accidentals, n.Step);
                         float? stemEnd = beamed ? (float?)(beamY + rise * (x - xStart) / (xEnd - xStart)) : null;
-                        DrawNote(g, color, line, x, top, n.Step - BottomStep(staff), n.Length, n.Alter, prior != n.Alter, direction, stemEnd);
+                        DrawNote(g, color, line, x, top, n.Step - BottomStep(staff), n.Length, n.Alter,
+                            prior != n.Alter || n.Courtesy, direction, stemEnd, n.Courtesy);
                         if (n.Articulation != null)
                         {
                             bool above = n.Step >= BottomStep(staff) + 4 || n.Articulation == "strong-accent" ||
@@ -445,12 +457,24 @@ namespace ValeScore
         }
 
         private static void DrawNote(Graphics g, Brush brush, Pen pen, float x, int top, int step, int length, int alter, bool accidental,
-            int beamDirection = 0, float? beamY = null)
+            int beamDirection = 0, float? beamY = null, bool courtesy = false)
         {
             float y = top + 40 - step * 5;
             for (int ledger = -2; ledger >= step; ledger -= 2) g.DrawLine(pen, x - 9, top + 40 - ledger * 5, x + 9, top + 40 - ledger * 5);
             for (int ledger = 10; ledger <= step; ledger += 2) g.DrawLine(pen, x - 9, top + 40 - ledger * 5, x + 9, top + 40 - ledger * 5);
-            if (accidental) MusicGlyphs.Accidental(g, brush, x - 14, y, alter);
+            if (accidental)
+            {
+                float ax = x - (courtesy ? 20 : Math.Abs(alter) == 2 ? 16 : 14);
+                MusicGlyphs.Accidental(g, brush, ax, y, alter);
+                if (courtesy)
+                {
+                    using (var bracket = new Pen(brush, 1))
+                    {
+                        g.DrawBezier(bracket, ax - 8, y - 10, ax - 13, y - 6, ax - 13, y + 6, ax - 8, y + 10);
+                        g.DrawBezier(bracket, ax + 8, y - 10, ax + 13, y - 6, ax + 13, y + 6, ax + 8, y + 10);
+                    }
+                }
+            }
             DrawDots(g, brush, x, y - (step % 2 == 0 ? 5 : 0), length);
             length = Score.BaseDuration(length);
             MusicGlyphs.Head(g, brush, x, y, length);

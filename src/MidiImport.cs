@@ -26,6 +26,7 @@ namespace ValeScore
             if (project.Title.Length > 80) project.Title = project.Title.Substring(0, 80).TrimEnd();
             bool supportedMeter = Score.SupportsMeter(midi.InitialBeats, midi.InitialBeatType);
             if (supportedMeter) project.SetMeter(midi.InitialBeats, midi.InitialBeatType);
+            project.SetKey(midi.InitialFifths, midi.InitialMinorKey);
             var result = new MidiImport { Project = project };
             var spans = PairNotes(midi, result);
             int endOfPiece = 0;
@@ -44,11 +45,8 @@ namespace ValeScore
                     }
                     int start = (int)Math.Round(units, MidpointRounding.AwayFromZero);
                     int end = Math.Max(start + 1, (int)Math.Round(endUnits, MidpointRounding.AwayFromZero));
-                    int octave = span.Start.Data1 / 12 - 1;
-                    int tone = span.Start.Data1 % 12;
-                    int degree = Array.FindLastIndex(Score.Semitones, n => n <= tone);
-                    int step = octave * 7 + degree;
-                    int alter = tone - Score.Semitones[degree];
+                    int step, alter;
+                    KeySignature.SpellMidi(project.Fifths, span.Start.Data1, 13, 43, out step, out alter);
                     if (end > limit || step < 13 || step > 43 ||
                         !Place(project, parts, start, end, step, alter, result))
                     {
@@ -69,10 +67,11 @@ namespace ValeScore
                 result.Quantized + " notas ajustadas à grade de semicolcheias.",
                 result.Split + " notas divididas em figuras. Os segmentos são rearticulados.",
                 result.Skipped + " notas omitidas por limites de pauta, extensão, duração, percussão ou pares MIDI incompletos.",
-                "As alturas são escritas com sustenidos, quando necessário. Timbres, dinâmica e pedal pertencem ao MIDI original."
+                "A grafia das notas segue a armadura inicial quando possível. Timbres, dinâmica e pedal pertencem ao MIDI original."
             };
             if (!supportedMeter) report.Add("A fórmula inicial do MIDI não é suportada e foi convertida para 4/4.");
             if (midi.HasMeterChanges) report.Add("A partitura usa uma fórmula fixa. As mudanças de fórmula ficam no MIDI original.");
+            if (midi.HasKeyChanges) report.Add("Foi usada a armadura inicial. Mudanças de armadura ficam no MIDI original.");
             if (midi.HasTempoChanges) report.Add("Foi usado o andamento inicial. Mudanças posteriores ficaram no MIDI original.");
             if (60000000.0 / midi.InitialTempo < 30 || 60000000.0 / midi.InitialTempo > 240)
                 report.Add("O andamento inicial foi ajustado à faixa de 30 a 240 BPM.");

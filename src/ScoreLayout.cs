@@ -16,6 +16,8 @@ namespace ValeScore
         private readonly List<Measure[]> systems = new List<Measure[]>();
         private readonly int[] measureSystems;
         private readonly int rows, systemsPerPage, barTicks;
+        private readonly int fifths;
+        public int MeasureLeft { get; private set; }
 
         public sealed class Measure
         {
@@ -49,6 +51,8 @@ namespace ValeScore
         public ScoreLayout(Score score)
         {
             barTicks = score.BarTicks;
+            fifths = score.Fifths;
+            MeasureLeft = StaffLeft + (fifths == 0 ? 0 : 10 + Math.Abs(fifths) * 11);
             var lanes = score.Parts.SelectMany(p => p.Staves).ToArray();
             rows = lanes.Length;
             systemsPerPage = Math.Max(1, 864 / (rows * StaffGap + SystemGap));
@@ -58,7 +62,7 @@ namespace ValeScore
             for (int bar = 0; bar < score.Bars; bar++)
             {
                 var measure = BuildMeasure(lanes, bar);
-                if (measures.Count > 0 && (measures.Count == 3 || used + measure.MinimumWidth > StaffRight - StaffLeft))
+                if (measures.Count > 0 && (measures.Count == 3 || used + measure.MinimumWidth > StaffRight - MeasureLeft))
                 {
                     AddSystem(measures, used, false);
                     measures.Clear();
@@ -103,7 +107,7 @@ namespace ValeScore
         {
             int start = bar * barTicks;
             var halfWidths = new float[barTicks];
-            var alterations = new bool[barTicks];
+            var alterations = new int[barTicks];
             var dots = new int[barTicks];
             var links = new List<Tuple<int, float>>[barTicks];
             foreach (var lane in lanes)
@@ -121,9 +125,9 @@ namespace ValeScore
                         dots[origin + 1] = Math.Max(dots[origin + 1], dotCount);
                     if (note.IsRest) continue;
                     int unit = note.Tick - start;
-                    int alter;
-                    accidentals.TryGetValue(note.Step, out alter);
-                    if (note.Alter != alter) alterations[unit] = true;
+                    int alter = KeySignature.Prior(fifths, accidentals, note.Step);
+                    if (note.Alter != alter || note.Courtesy)
+                        alterations[unit] = Math.Max(alterations[unit], note.Courtesy || Math.Abs(note.Alter) == 2 ? 35 : 23);
                     accidentals[note.Step] = note.Alter;
                     ReserveMark(note.Chord, ChordFont, unit, halfWidths, links, ref previousChord, ref previousChordWidth);
                     ReserveMark(note.Dynamic, DynamicFont, unit, halfWidths, links, ref previousDynamic, ref previousDynamicWidth);
@@ -144,7 +148,7 @@ namespace ValeScore
             float end = 0;
             for (int unit = 0; unit < offsets.Length; unit++)
             {
-                float gap = (alterations[unit] ? 22 : 11.2f) + dots[unit] * 4.5f;
+                float gap = Math.Max(alterations[unit], 11.2f) + dots[unit] * 4.5f;
                 float left = unit == 0 ? Math.Max(19, gap) : offsets[unit - 1] + gap;
                 left = Math.Max(left, halfWidths[unit] + 8);
                 if (links[unit] != null)
@@ -186,9 +190,9 @@ namespace ValeScore
 
         private void AddSystem(List<Measure> measures, float used, bool last)
         {
-            float capacity = StaffRight - StaffLeft;
+            float capacity = StaffRight - MeasureLeft;
             float target = last && measures.Count == 1 ? Math.Min(capacity, Math.Max(228, used)) : capacity;
-            float left = StaffLeft;
+            float left = MeasureLeft;
             foreach (var measure in measures)
             {
                 float width = used > target ? measure.MinimumWidth * target / used

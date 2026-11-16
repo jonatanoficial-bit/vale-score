@@ -103,6 +103,21 @@ namespace ValeScore
 
         public static void Accidental(Graphics g, Brush ink, float x, float y, int alter)
         {
+            if (alter == -2)
+            {
+                Accidental(g, ink, x - 3.7f, y, -1);
+                Accidental(g, ink, x + 3.7f, y, -1);
+                return;
+            }
+            if (alter == 2)
+            {
+                using (var pen = new Pen(ink, 2.1f))
+                {
+                    g.DrawLine(pen, x - 4.6f, y - 4.6f, x + 4.6f, y + 4.6f);
+                    g.DrawLine(pen, x - 4.6f, y + 4.6f, x + 4.6f, y - 4.6f);
+                }
+                return;
+            }
             using (var thin = new Pen(ink, 1.35f))
             using (var thick = new Pen(ink, 2.7f))
             {

@@ -125,6 +125,12 @@ namespace ValeScore
                     throw new InvalidDataException("Use uma fórmula fixa de 2/4, 3/4, 4/4, 6/8, 9/8 ou 12/8.");
                 score.SetMeter(beats, beatType);
             }
+            var initialKey = parts.Select(p => p.Elements("measure").First())
+                .SelectMany(m => m.Elements("attributes")).SelectMany(a => a.Elements("key"))
+                .FirstOrDefault(k => k.Element("fifths") != null);
+            int fifths = initialKey == null ? 0 : Integer(initialKey.Element("fifths"), int.MaxValue);
+            if (fifths >= -7 && fifths <= 7)
+                score.SetKey(fifths, initialKey != null && (string)initialKey.Element("mode") == "minor");
             var result = new MusicXmlImport { Project = score };
             var names = root.Descendants("score-part").ToLookup(e => (string)e.Attribute("id") ?? "");
             foreach (var source in parts)
@@ -170,7 +176,9 @@ namespace ValeScore
                         divisions = Integer(child.Element("divisions"), divisions);
                         if (divisions < 1 || divisions > 1000000) throw new InvalidDataException("Divisões MusicXML inválidas.");
 
-                        if (child.Elements("key").Any(k => Integer(k.Element("fifths"), 0) != 0) ||
+                        if (child.Elements("key").Any(k => Integer(k.Element("fifths"), int.MaxValue) != result.Project.Fifths ||
+                            (string)k.Element("mode") == (result.Project.MinorKey ? "major" : "minor") ||
+                            (k.Element("mode") != null && (string)k.Element("mode") != "major" && (string)k.Element("mode") != "minor")) ||
                             child.Element("transpose") != null) result.Normalized++;
                         continue;
                     }
@@ -237,8 +245,12 @@ namespace ValeScore
                         int step = octave * 7 + degree;
                         int min = staff == 0 ? 25 : 13;
                         if (degree < 0 || octave < 0 || octave > 9 || step < min || step > min + 18 ||
-                            alteration < -1 || alteration > 1) { result.Omitted++; continue; }
+                            alteration < -2 || alteration > 2) { result.Omitted++; continue; }
                         result.Project.Put(part, staff, at, end - tick, step, alteration);
+                        var accidental = child.Element("accidental");
+                        if (accidental != null && ((string)accidental.Attribute("cautionary") == "yes" ||
+                            (string)accidental.Attribute("parentheses") == "yes"))
+                            result.Project.SetCourtesy(part, staff, at, true);
                         result.Notes++;
                         var marksOnNote = child.Elements("notations").Elements("articulations").Elements().ToArray();
                         var articulation = marksOnNote.FirstOrDefault(e => Articulations.XmlNames.Contains(e.Name.LocalName));

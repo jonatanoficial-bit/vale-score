@@ -14,6 +14,8 @@ namespace ValeScore
         public int Track;
         internal int Tempo;
         internal int MeterBeats, MeterDenominator;
+        internal bool KeyMeta, MinorKey;
+        internal int Fifths;
     }
 
     public sealed class MidiSequence
@@ -27,6 +29,9 @@ namespace ValeScore
         public int InitialBeats { get; private set; }
         public int InitialBeatType { get; private set; }
         public bool HasMeterChanges { get; private set; }
+        public int InitialFifths { get; private set; }
+        public bool InitialMinorKey { get; private set; }
+        public bool HasKeyChanges { get; private set; }
 
         private MidiSequence() { }
 
@@ -72,6 +77,8 @@ namespace ValeScore
             bool tempoChanges = false;
             int beats = 4, beatType = 4;
             bool meterChanges = false;
+            int fifths = 0;
+            bool minor = false, keyChanges = false;
             long previous = 0;
             double time = 0;
             var timed = new List<MidiEvent>();
@@ -79,7 +86,12 @@ namespace ValeScore
             {
                 time += (item.Tick - previous) * (double)tempo / (division * 1000000.0);
                 previous = item.Tick;
-                if (item.MeterBeats != 0)
+                if (item.KeyMeta)
+                {
+                    if (item.Tick == 0) { fifths = item.Fifths; minor = item.MinorKey; }
+                    else if (item.Fifths != fifths || item.MinorKey != minor) keyChanges = true;
+                }
+                else if (item.MeterBeats != 0)
                 {
                     if (item.Tick == 0) { beats = item.MeterBeats; beatType = item.MeterDenominator; }
                     else if (item.MeterBeats != beats || item.MeterDenominator != beatType) meterChanges = true;
@@ -101,7 +113,8 @@ namespace ValeScore
             return new MidiSequence
             {
                 Events = timed.ToArray(), Duration = time, Tracks = tracks, Division = division,
-                InitialTempo = initialTempo, HasTempoChanges = tempoChanges, InitialBeats = beats, InitialBeatType = beatType, HasMeterChanges = meterChanges
+                InitialTempo = initialTempo, HasTempoChanges = tempoChanges, InitialBeats = beats, InitialBeatType = beatType, HasMeterChanges = meterChanges,
+                InitialFifths = fifths, InitialMinorKey = minor, HasKeyChanges = keyChanges
             };
         }
 
@@ -154,6 +167,14 @@ namespace ValeScore
                     if (size != 4 || data[offset] == 0 || data[offset + 1] > 30)
                         throw new InvalidDataException("Fórmula de compasso MIDI inválida.");
                     Add(events, new MidiEvent { Tick = tick, MeterBeats = data[offset], MeterDenominator = 1 << data[offset + 1] });
+                }
+                if (type == 0x59)
+                {
+                    if (size != 2) throw new InvalidDataException("Armadura MIDI inválida.");
+                    int fifths = unchecked((sbyte)data[offset]);
+                    if (fifths < -7 || fifths > 7 || data[offset + 1] > 1)
+                        throw new InvalidDataException("Armadura MIDI inválida.");
+                    Add(events, new MidiEvent { Tick = tick, KeyMeta = true, Fifths = fifths, MinorKey = data[offset + 1] == 1 });
                 }
                 offset += size;
             }
@@ -212,7 +233,8 @@ namespace ValeScore
                 BigEndian(writer, 480, 2);
                 WriteTrack(writer, new[] {
                     new EventData { Data = new byte[] { 0xFF, 0x51, 3, (byte)(tempo >> 16), (byte)(tempo >> 8), (byte)tempo } },
-                    new EventData { Data = new byte[] { 0xFF, 0x58, 4, (byte)score.Beats, (byte)(score.BeatType == 8 ? 3 : 2), (byte)(score.BeatType == 8 ? 36 : 24), 8 } }
+                    new EventData { Data = new byte[] { 0xFF, 0x58, 4, (byte)score.Beats, (byte)(score.BeatType == 8 ? 3 : 2), (byte)(score.BeatType == 8 ? 36 : 24), 8 } },
+                    new EventData { Data = new byte[] { 0xFF, 0x59, 2, unchecked((byte)score.Fifths), (byte)(score.MinorKey ? 1 : 0) } }
                 }, score.Bars * score.BarTicks * 120);
 
                 for (int channel = 0; channel < score.Parts.Count; channel++)

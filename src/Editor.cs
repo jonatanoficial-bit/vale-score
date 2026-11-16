@@ -72,7 +72,7 @@ namespace ValeScore
         private string path;
         private byte[] saved;
         private int duration = 4;
-        private int inputAlter;
+        private int? inputAlter;
         private StaffPosition position = new StaffPosition { Step = 28 };
         private readonly List<StaffPosition> lanes = new List<StaffPosition>();
 
@@ -122,6 +122,15 @@ namespace ValeScore
             edit.DropDownItems.Add(articulationMenu);
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
             Item(edit, "Fórmula de compasso…", Keys.None, EditMeter);
+            Item(edit, "Armadura de clave…", Keys.None, EditKey);
+            var spelling = new ToolStripMenuItem("Grafia e acidentes") { ForeColor = TextColor };
+            Item(spelling, "Acidente automático", Keys.None, () => { inputAlter = null; ShowDuration(); Report("Entrada segue a armadura e o compasso."); });
+            Item(spelling, "Dobrado bemol", Keys.None, () => ChooseAccidental(-2));
+            Item(spelling, "Dobrado sustenido", Keys.None, () => ChooseAccidental(2));
+            Item(spelling, "Alternar acidente de cortesia", Keys.None, ToggleCourtesy);
+            Item(spelling, "Enarmonia: grau anterior", Keys.None, () => Respell(-1));
+            Item(spelling, "Enarmonia: próximo grau", Keys.None, () => Respell(1));
+            edit.DropDownItems.Add(spelling);
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
             Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
             Item(edit, "Copiar compasso atual", Keys.Control | Keys.Shift | Keys.C, CopyCurrentBar);
@@ -835,7 +844,7 @@ namespace ValeScore
             var selected = SelectedEvent();
             var note = selected != null && !selected.IsRest ? selected : null;
             int step = note == null ? position.Step : note.Step;
-            string altered = note == null || note.Alter == 0 ? "" : note.Alter > 0 ? "♯" : "♭";
+            string altered = note == null ? "" : new[] { "♭♭", "♭", "", "♯", "♯♯" }[note.Alter + 2];
             selection.Text = "Compasso " + (position.Tick / score.BarTicks + 1) + "  ·  " + (position.Tick % score.BarTicks + 1) + "/" + score.BarTicks + "\n"
                 + (selected != null && selected.IsRest ? "Pausa" : Score.Names[step % 7] + altered + (step / 7))
                 + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, Score.BaseDuration(selected.Length))]
@@ -925,7 +934,7 @@ namespace ValeScore
             }
             dotButton.BackColor = Score.DotCount(active) == 1 ? Accent : PanelColor;
             doubleDotButton.BackColor = Score.DotCount(active) == 2 ? Accent : PanelColor;
-            int accidental = showingSelection && !selected.IsRest ? selected.Alter : inputAlter;
+            int? accidental = showingSelection && !selected.IsRest ? (int?)selected.Alter : inputAlter;
             for (int i = 0; i < accidentalButtons.Count; i++)
                 accidentalButtons[i].BackColor = !rest && i == accidental + 1 ? Accent : PanelColor;
             sheet.PreviewLength = duration;
@@ -977,7 +986,8 @@ namespace ValeScore
             int min = position.Staff == 0 ? 25 : 13;
             if (step < min || step > min + 18) { Report("Altura fora da extensão editável da pauta."); RefreshView(); return false; }
             position.Step = step;
-            return Change(() => score.Put(position.Part, position.Staff, position.Tick, length, step, alteration ?? inputAlter));
+            int effective = alteration ?? inputAlter ?? score.InputAccidental(position.Part, position.Staff, position.Tick, step);
+            return Change(() => score.Put(position.Part, position.Staff, position.Tick, length, step, effective));
         }
 
         private bool PutRest(int length)
@@ -1002,6 +1012,55 @@ namespace ValeScore
             if (!CommitLyric()) return;
             if (score.Bars == Score.MaxBars) { Report("Limite de 64 compassos atingido."); return; }
             Change(() => score.Bars++);
+        }
+
+        private void EditKey()
+        {
+            if (!CommitLyric()) return;
+            using (var dialog = new Form { Text = "Armadura de clave", ClientSize = new Size(400, 148),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, Font = Font })
+            {
+                var keys = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Tonalidade",
+                    Bounds = new Rectangle(18, 45, 364, 28) };
+                for (int i = 0; i < 30; i++) keys.Items.Add(KeySignature.Name(i % 15 - 7, i >= 15));
+                keys.SelectedIndex = score.Fifths + 7 + (score.MinorKey ? 15 : 0);
+                var apply = new Button { Text = "Aplicar", Bounds = new Rectangle(204, 99, 82, 29) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(300, 99, 82, 29) };
+                apply.Click += delegate
+                {
+                    if (!Change(() => score.SetKey(keys.SelectedIndex % 15 - 7, keys.SelectedIndex >= 15))) return;
+                    inputAlter = null;
+                    ShowDuration();
+                    Report("Armadura: " + KeySignature.Name(score.Fifths, score.MinorKey));
+                    dialog.DialogResult = DialogResult.OK;
+                };
+                dialog.Controls.AddRange(new Control[] {
+                    new Label { Text = "As notas existentes conservam a altura.", AutoSize = true, Location = new Point(18, 15) },
+                    keys, apply, cancel
+                });
+                dialog.AcceptButton = apply;
+                dialog.CancelButton = cancel;
+                dialog.ShowDialog(this);
+            }
+        }
+
+        private void ToggleCourtesy()
+        {
+            if (!CommitLyric()) return;
+            var note = SelectedNote();
+            if (note == null) { Report("Selecione uma nota."); return; }
+            Change(() => score.SetCourtesy(position.Part, position.Staff, position.Tick, !note.Courtesy));
+        }
+
+        private void Respell(int direction)
+        {
+            if (!CommitLyric()) return;
+            Change(() =>
+            {
+                if (!score.Respelling(position.Part, position.Staff, position.Tick, direction))
+                    throw new InvalidOperationException("Não há grafia enarmônica desse lado para a nota selecionada.");
+            });
         }
 
         private void EditMeter()
@@ -1232,7 +1291,7 @@ namespace ValeScore
             undo.Clear();
             redo.Clear();
             position = new StaffPosition { Step = 28 };
-            inputAlter = 0;
+            inputAlter = null;
             RefreshView(true);
             SetMode(score.Parts.SelectMany(part => part.Staves).All(staff => staff.Count == 0) ? EditMode.Write : EditMode.Select);
             surface.AutoScrollPosition = Point.Empty;

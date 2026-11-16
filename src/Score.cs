@@ -15,6 +15,7 @@ namespace ValeScore
         [DataMember] public int Length;
         [DataMember] public int Step;
         [DataMember] public int Alter;
+        [DataMember(EmitDefaultValue = false)] public bool Courtesy;
         [DataMember(EmitDefaultValue = false)] public string Lyric;
         [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
         [DataMember(EmitDefaultValue = false)] public string Chord;
@@ -63,7 +64,46 @@ namespace ValeScore
             BeatType = beatType;
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 7;
+        public const int CurrentVersion = 8;
+        [DataMember(EmitDefaultValue = false)] public int Fifths;
+        [DataMember(EmitDefaultValue = false)] public bool MinorKey;
+
+        public void SetKey(int fifths, bool minor)
+        {
+            if (fifths < -7 || fifths > 7) throw new ArgumentOutOfRangeException("fifths");
+            Fifths = fifths;
+            MinorKey = minor;
+        }
+
+        public int InputAccidental(int part, int staff, int tick, int step)
+        {
+            int barStart = tick / BarTicks * BarTicks;
+            var previous = Parts[part].Staves[staff].FindLast(n =>
+                n.Tick >= barStart && n.Tick <= tick && !n.IsRest && n.Step == step);
+            return previous == null ? KeySignature.Effective(Fifths, step) : previous.Alter;
+        }
+
+        public bool Respelling(int part, int staff, int tick, int direction)
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            if (note == null || (direction != 1 && direction != -1)) return false;
+            int step = note.Step + direction;
+            int min = staff == 0 ? 25 : 13;
+            if (step < min || step > min + 18) return false;
+            int natural = 12 + (step / 7) * 12 + Semitones[step % 7];
+            int alter = note.Midi - natural;
+            if (alter < -2 || alter > 2) return false;
+            note.Step = step;
+            note.Alter = alter;
+            return true;
+        }
+
+        public void SetCourtesy(int part, int staff, int tick, bool enabled)
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            if (note == null) throw new InvalidOperationException("Selecione uma nota para editar o acidente.");
+            note.Courtesy = enabled;
+        }
         public static readonly string[] Dynamics = { "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff" };
         public static int Velocity(string dynamic)
         {
@@ -148,6 +188,7 @@ namespace ValeScore
                     note.Chord = previous.Chord;
                     note.Dynamic = previous.Dynamic;
                     note.Articulation = previous.Articulation;
+                    note.Courtesy = previous.Courtesy;
                 }
                 notes.Remove(previous);
             }
@@ -201,12 +242,12 @@ namespace ValeScore
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
             if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter &&
-                n.Chord == null && n.Dynamic == null && n.Articulation == null;
+                n.Chord == null && n.Dynamic == null && n.Articulation == null && !n.Courtesy;
             ChordSymbol symbol;
             if ((n.Chord != null && !ChordSymbol.TryParse(n.Chord, out symbol)) ||
                 (n.Dynamic != null && !Dynamics.Contains(n.Dynamic)) ||
                 (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation))) return false;
-            return n.Step >= 0 && n.Step <= 69 && n.Alter >= -1 && n.Alter <= 1 && n.Midi >= 0 && n.Midi <= 127;
+            return n.Step >= 0 && n.Step <= 69 && n.Alter >= -2 && n.Alter <= 2 && n.Midi >= 0 && n.Midi <= 127;
         }
 
         public static int RestLength(int tick, int remaining)
@@ -322,7 +363,7 @@ namespace ValeScore
                 {
                     Tick = n.Tick + BarTicks, Length = n.Length, Step = n.Step, Alter = n.Alter,
                     IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
-                    Dynamic = n.Dynamic, Articulation = n.Articulation
+                    Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy
                 }).ToArray();
                 foreach (var note in staff.Where(n => n.Tick >= end)) note.Tick += BarTicks;
                 staff.AddRange(copies);
@@ -362,7 +403,7 @@ namespace ValeScore
                 {
                     Tick = start + n.Tick, Length = n.Length, Step = n.Step, Alter = n.Alter,
                     IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
-                    Dynamic = n.Dynamic, Articulation = n.Articulation
+                    Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy
                 }));
                 staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
             }
@@ -396,7 +437,7 @@ namespace ValeScore
 
         public void Validate()
         {
-            if (Version != CurrentVersion || !SupportsMeter(Beats, BeatType) || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
+            if (Version != CurrentVersion || Fifths < -7 || Fifths > 7 || !SupportsMeter(Beats, BeatType) || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
                 string.IsNullOrWhiteSpace(Title) || Title.Length > 80 || Author == null || Author.Length > 80 ||
                 Parts == null || Parts.Count < 1 || Parts.Count > 4)
                 throw new InvalidDataException("Projeto inválido ou versão de arquivo incompatível.");
@@ -445,8 +486,7 @@ namespace ValeScore
                     if (score == null) throw new InvalidDataException("Projeto vazio.");
                     if (score.Version >= 1 && score.Version < CurrentVersion)
                     {
-                        score.Beats = 4;
-                        score.BeatType = 4;
+                        if (score.Version < 7) { score.Beats = 4; score.BeatType = 4; }
                         score.Version = CurrentVersion;
                     }
                     score.Validate();

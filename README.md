@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.10.0 · Prévia para Windows x64**
+**0.11.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.10.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.10.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.11.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.11.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -33,6 +33,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.11
+
+- **Editar → Armadura de clave** oferece armaduras tradicionais maiores e menores, com até sete sustenidos ou bemóis, para toda a partitura. A alteração da armadura preserva a altura das notas existentes.
+- **Editar → Grafia e acidentes** inclui dobrado bemol, dobrado sustenido, acidente de cortesia e grafia enarmônica para o grau vizinho. A entrada automática segue a armadura e os acidentes vigentes no compasso.
+- MusicXML e MXL preservam a armadura inicial, as alterações duplas e os acidentes de cortesia compatíveis. MIDI preserva armadura inicial e alturas soantes. A grafia importada do MIDI é inferida.
+- O esquema nativo 8 grava armadura e cortesia. A migração conserva a fórmula de compasso dos projetos 0.10.
 
 ## Novidades da 0.10
 
@@ -73,4 +80,4 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `7`. A versão 0.10 abre projetos dos esquemas 1 a 6 e grava no esquema 7. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+JSON UTF-8, versão de esquema `8`. A versão 0.11 abre projetos dos esquemas 1 a 7 e grava no esquema 8. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.

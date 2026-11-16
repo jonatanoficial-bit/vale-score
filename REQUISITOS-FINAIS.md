@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.10.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.11.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -78,9 +78,9 @@ Base da matriz: prévia 0.10.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
 | 04.01 | Claves de sol, fá, dó, oitava e percussão | Parcial | |
-| 04.02 | Armaduras tradicionais e personalizadas | Pendente | |
-| 04.03 | Alterações simples, duplas e de cortesia | Parcial | |
-| 04.04 | Enarmonia e alteração da grafia das notas | Pendente | |
+| 04.02 | Armaduras tradicionais e personalizadas | Parcial | Armaduras tradicionais fixas. [Testes de intercâmbio](tests/Smoke.cs). |
+| 04.03 | Alterações simples, duplas e de cortesia | Parcial | Entrada, exibição e intercâmbio. [Suíte Windows](tests/Smoke.cs). Validação em leitores externos pendente. |
+| 04.04 | Enarmonia e alteração da grafia das notas | Parcial | Alteração para grau adjacente preserva altura soante. [Teste](tests/Smoke.cs). |
 | 04.05 | Afinação e transposição de instrumentos | Pendente | |
 | 04.06 | Notas escritas versus alturas soantes | Pendente | |
 | 04.07 | Acidentes microtonais e sistemas personalizados | Pendente | |

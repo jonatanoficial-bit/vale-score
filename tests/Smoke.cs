@@ -26,6 +26,44 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var tonal = Score.New(false);
+        tonal.SetMeter(6, 8);
+        tonal.SetKey(-2, true);
+        Assert(tonal.InputAccidental(0, 0, 0, 34) == -1 && tonal.InputAccidental(0, 0, 0, 30) == -1,
+            "Armadura de dois bemóis afeta Si e Mi");
+        tonal.Put(0, 0, 0, 4, 34, 0);
+        Assert(tonal.InputAccidental(0, 0, 4, 34) == 0 && tonal.InputAccidental(0, 0, 12, 34) == -1,
+            "Bequadro prevalece na oitava até a barra seguinte");
+        tonal.Put(0, 0, 4, 4, 28, 2);
+        tonal.SetCourtesy(0, 0, 4, true);
+        var enharmonic = tonal.Parts[0].Staves[0][1];
+        Assert(tonal.Respelling(0, 0, 4, 1) && enharmonic.Step == 29 && enharmonic.Alter == 0 && enharmonic.Midi == 62 &&
+            tonal.Respelling(0, 0, 4, -1) && enharmonic.Alter == 2 && enharmonic.Courtesy,
+            "Enarmonia preserva altura soante e acidente de cortesia");
+        var tonalLayout = new ScoreLayout(tonal);
+        Assert(tonalLayout.MeasureLeft > ScoreLayout.StaffLeft, "Pauta reserva espaço para a armadura");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(tonal, xml);
+            xml.Position = 0;
+            var read = MusicXmlImport.Read(xml, "Tonal");
+            var figure = read.Project.Parts[0].Staves[0][1];
+            Assert(read.Project.Fifths == -2 && read.Project.MinorKey && figure.Alter == 2 && figure.Courtesy &&
+                read.Project.BarTicks == 12, "MusicXML preserva armadura, modo e dobrado sustenido de cortesia");
+        }
+        using (var midi = new MemoryStream())
+        {
+            MidiSequence.Export(tonal, midi);
+            midi.Position = 0;
+            var read = MidiSequence.Read(midi);
+            Assert(read.InitialFifths == -2 && read.InitialMinorKey &&
+                read.Events.Any(e => (e.Status & 240) == 0x90 && e.Data1 == 62) &&
+                MidiImport.Convert(read, "Tonal").Project.Fifths == -2, "MIDI preserva armadura inicial e alturas");
+        }
+        var olderMeter = Score.New(false);
+        olderMeter.SetMeter(9, 8);
+        olderMeter.Version = 7;
+        Assert(Score.Restore(olderMeter.Snapshot()).BarTicks == 18, "Migração conserva a fórmula de projetos 0.10");
         var meterScore = Score.New(false);
         meterScore.Put(0, 0, 16, 2, 29, 0);
         meterScore.SetMeter(6, 8);
