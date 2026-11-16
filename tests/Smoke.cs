@@ -26,6 +26,70 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var meterScore = Score.New(false);
+        meterScore.Put(0, 0, 16, 2, 29, 0);
+        meterScore.SetMeter(6, 8);
+        var moved = meterScore.Parts[0].Staves[0][0];
+        Assert(meterScore.BarTicks == 12 && meterScore.BeatTicks == 6 && moved.Tick == 12,
+            "Mudança para 6/8 preserva a posição dentro do compasso");
+        meterScore.Put(0, 0, 14, 2, 30, 0);
+        meterScore.Put(0, 0, 16, 2, 31, 0);
+        meterScore.Put(0, 0, 18, 2, 32, 0);
+        Assert(Score.BeamGroupEnd(meterScore.Parts[0].Staves[0], 0, 12, 6) == 3,
+            "6/8 agrupa três colcheias sem atravessar o tempo");
+        var beforeMeter = meterScore.Snapshot();
+        meterScore.Put(0, 0, 20, 2, 33, 0);
+        var beforeRejected = meterScore.Snapshot();
+        bool rejectedMeter = false;
+        try { meterScore.SetMeter(2, 4); }
+        catch (InvalidOperationException) { rejectedMeter = true; }
+        Assert(rejectedMeter && beforeRejected.SequenceEqual(meterScore.Snapshot()),
+            "Encurtamento de compasso incompatível é atômico");
+        meterScore = Score.Restore(beforeMeter);
+        meterScore.SetMeter(12, 8);
+        Assert(meterScore.BarTicks == 24 && meterScore.Parts[0].Staves[0][0].Tick == 24 &&
+            new ScoreLayout(meterScore).MeasureOf(0).Nearest(10000) == 23,
+            "12/8 remapeia notas e expõe todas as posições na pauta");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(meterScore, xml);
+            xml.Position = 0;
+            var written = XDocument.Load(xml);
+            var time = written.Descendants("time").Single();
+            Assert((int)time.Element("beats") == 12 && (int)time.Element("beat-type") == 8 &&
+                written.Descendants("backup").All(e => (int)e.Element("duration") == 24) &&
+                written.Descendants("rest").Any(e => (string)e.Attribute("measure") == "yes"),
+                "MusicXML registra 12/8 e pausas de compasso corretamente");
+            xml.Position = 0;
+            var roundTrip = MusicXmlImport.Read(xml, "Composto");
+            Assert(roundTrip.Omitted == 0 && roundTrip.Project.BarTicks == 24 &&
+                roundTrip.Project.Parts[0].Staves[0].First(n => !n.IsRest).Tick == 24,
+                "Importação MusicXML preserva métrica composta e posição");
+        }
+        using (var midi = new MemoryStream())
+        {
+            MidiSequence.Export(meterScore, midi);
+            midi.Position = 0;
+            var sequence = MidiSequence.Read(midi);
+            Assert(sequence.InitialBeats == 12 && sequence.InitialBeatType == 8 &&
+                Math.Abs(sequence.Duration - 15) < .001 && MidiImport.Convert(sequence, "Composto").Project.BarTicks == 24,
+                "MIDI conserva fórmula e duração da partitura em 12/8");
+        }
+        var emptyClick = Score.New(false);
+        emptyClick.SetMeter(6, 8);
+        using (var wave = Output.Wave(emptyClick, true))
+        using (var silent = Output.Wave(emptyClick))
+        using (var slower = Output.Wave(emptyClick, true, .5))
+        {
+            var samples = wave.ToArray();
+            int pulse = (int)Math.Round(Output.SampleRate * 90.0 / emptyClick.Tempo);
+            Assert(samples.Skip(44 + pulse * 2).Take(200).Any(value => value != 0) &&
+                samples.Skip(44 + pulse).Take(200).All(value => value == 0) &&
+                silent.ToArray().Skip(44).All(value => value == 0),
+                "Metrônomo de 6/8 marca semínimas pontuadas e fica fora da exportação WAV");
+            Assert(Math.Abs((slower.Length - 44) - (wave.Length - 44) * 2) <= 2,
+                "Velocidade de 50% dobra a duração da reprodução");
+        }
         var expression = Score.New(false);
         expression.Put(0, 0, 0, 4, 28, 0);
         expression.Put(0, 0, 4, 4, 29, 0);

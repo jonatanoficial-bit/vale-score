@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.9.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.10.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -61,7 +61,7 @@ Base da matriz: prévia 0.9.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 03.01 | Figuras e pausas de valores longos e muito curtos | Parcial | |
 | 03.02 | Notas pontuadas, duplamente e triplamente pontuadas | Parcial | [Teste do editor e do MusicXML](tests/Smoke.cs). Um e dois pontos conforme a grade. Triplo ponto pendente. |
 | 03.03 | Anacruse e compassos incompletos | Pendente | |
-| 03.04 | Fórmulas de compasso simples e compostas | Parcial | |
+| 03.04 | Fórmulas de compasso simples e compostas | Parcial | Seis fórmulas fixas. [Testes de métrica e intercâmbio](tests/Smoke.cs). |
 | 03.05 | Fórmulas irregulares e alternadas | Pendente | |
 | 03.06 | Mudanças de fórmula durante a peça | Pendente | |
 | 03.07 | Quiálteras complexas e aninhadas | Pendente | |
@@ -221,7 +221,7 @@ Base da matriz: prévia 0.9.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
-| 12.01 | Importação de MusicXML | Parcial | [Testes MusicXML e MXL](tests/Smoke.cs). Cobertura de 4/4, até quatro partes, duas pautas e uma voz por pauta. |
+| 12.01 | Importação de MusicXML | Parcial | [Testes MusicXML e MXL](tests/Smoke.cs). Seis fórmulas fixas, até quatro partes, duas pautas e uma voz por pauta. |
 | 12.02 | Exportação de MusicXML | Parcial | |
 | 12.03 | Importação de MIDI | Parcial | [Suíte Windows](tests/Smoke.cs). Conversão em grade fixa. Métrica variável, percussão e vozes independentes pendentes. |
 | 12.04 | Exportação de MIDI | Parcial | |
@@ -242,7 +242,7 @@ Base da matriz: prévia 0.9.0. A [suíte automatizada](tests/Smoke.cs) verifica,
 | 13.02 | Partituras simplificadas e versões alternativas | Pendente | |
 | 13.03 | Partes individuais para ensaios | Parcial | [Extração de instrumento](tests/Smoke.cs). Exportação MusicXML independente. Layout de partes vinculado pendente. |
 | 13.04 | Indicações de ensaio e referências de compasso | Pendente | |
-| 13.05 | Metrônomo e reprodução em velocidade ajustada | Pendente | |
+| 13.05 | Metrônomo e reprodução em velocidade ajustada | Parcial | Metrônomo com som interno e velocidade da partitura de 50% a 150%. [Testes](tests/Smoke.cs). |
 | 13.06 | Loop de trechos para estudo | Pendente | |
 | 13.07 | Acompanhamento por instrumentos virtuais | Parcial | |
 | 13.08 | Preparação de reduções para piano | Pendente | |

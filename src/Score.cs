@@ -39,9 +39,31 @@ namespace ValeScore
     [DataContract]
     public sealed class Score
     {
-        public const int BarTicks = 16;
+        public int BarTicks { get { return Beats * 16 / BeatType; } }
+        public int BeatTicks { get { return BeatType == 8 ? 6 : 4; } }
+        public static readonly string[] Meters = { "2/4", "3/4", "4/4", "6/8", "9/8", "12/8" };
+        [DataMember] public int Beats = 4;
+        [DataMember] public int BeatType = 4;
+
+        public static bool SupportsMeter(int beats, int beatType)
+        {
+            return Meters.Contains(beats + "/" + beatType);
+        }
+
+        public void SetMeter(int beats, int beatType)
+        {
+            if (!SupportsMeter(beats, beatType)) throw new InvalidOperationException("Fórmula de compasso indisponível.");
+            int oldSize = BarTicks;
+            int newSize = beats * 16 / beatType;
+            var notes = Parts.SelectMany(p => p.Staves).SelectMany(lane => lane).ToArray();
+            if (notes.Any(note => note.Tick % oldSize + note.Length > newSize))
+                throw new InvalidOperationException("Há figuras que ultrapassariam o novo compasso. Ajuste as durações antes de mudar a fórmula.");
+            foreach (var note in notes) note.Tick = note.Tick / oldSize * newSize + note.Tick % oldSize;
+            Beats = beats;
+            BeatType = beatType;
+        }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 6;
+        public const int CurrentVersion = 7;
         public static readonly string[] Dynamics = { "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff" };
         public static int Velocity(string dynamic)
         {
@@ -174,7 +196,7 @@ namespace ValeScore
             catch (System.Xml.XmlException) { return false; }
         }
 
-        private static bool ValidNote(Note n)
+        private bool ValidNote(Note n)
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
@@ -190,6 +212,14 @@ namespace ValeScore
         public static int RestLength(int tick, int remaining)
         {
             return Durations.First(d => d <= remaining && tick % d == 0);
+        }
+
+        public static int RestLength(int localTick, int remaining, int beatSize)
+        {
+            if (beatSize != 6) return RestLength(localTick, remaining);
+            int within = localTick % beatSize;
+            int available = Math.Min(remaining, beatSize - within);
+            return within == 0 && available == 6 ? 6 : RestLength(within, available);
         }
 
         public static int BaseDuration(int length)
@@ -319,7 +349,7 @@ namespace ValeScore
         {
             if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
             copy.Validate();
-            if (copy.Bars != 1 || !Parts.Select(p => p.Staves.Count).SequenceEqual(copy.Parts.Select(p => p.Staves.Count)))
+            if (copy.Bars != 1 || copy.Beats != Beats || copy.BeatType != BeatType || !Parts.Select(p => p.Staves.Count).SequenceEqual(copy.Parts.Select(p => p.Staves.Count)))
                 throw new InvalidOperationException("O compasso copiado precisa ter o mesmo conjunto de pautas.");
             var sources = copy.Parts.SelectMany(p => p.Staves).ToArray();
             var targets = Parts.SelectMany(p => p.Staves).ToArray();
@@ -348,12 +378,12 @@ namespace ValeScore
             return copy;
         }
 
-        public static int BeamGroupEnd(IList<Note> events, int index)
+        public static int BeamGroupEnd(IList<Note> events, int index, int barStart, int beatSize)
         {
             var first = events[index];
             int end = index + 1;
             if (first.IsRest || first.Length > 2) return end;
-            int beatEnd = (first.Tick / 4 + 1) * 4;
+            int beatEnd = barStart + ((first.Tick - barStart) / beatSize + 1) * beatSize;
             while (end < events.Count)
             {
                 var next = events[end];
@@ -366,7 +396,7 @@ namespace ValeScore
 
         public void Validate()
         {
-            if (Version != CurrentVersion || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
+            if (Version != CurrentVersion || !SupportsMeter(Beats, BeatType) || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
                 string.IsNullOrWhiteSpace(Title) || Title.Length > 80 || Author == null || Author.Length > 80 ||
                 Parts == null || Parts.Count < 1 || Parts.Count > 4)
                 throw new InvalidDataException("Projeto inválido ou versão de arquivo incompatível.");
@@ -413,7 +443,12 @@ namespace ValeScore
                 {
                     var score = (Score)Serializer.ReadObject(stream);
                     if (score == null) throw new InvalidDataException("Projeto vazio.");
-                    if (score.Version >= 1 && score.Version < CurrentVersion) score.Version = CurrentVersion;
+                    if (score.Version >= 1 && score.Version < CurrentVersion)
+                    {
+                        score.Beats = 4;
+                        score.BeatType = 4;
+                        score.Version = CurrentVersion;
+                    }
                     score.Validate();
                     return score;
                 }

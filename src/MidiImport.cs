@@ -24,6 +24,8 @@ namespace ValeScore
             var project = new Score { Title = string.IsNullOrWhiteSpace(title) ? "Partitura MIDI" : title.Trim(),
                 Tempo = Math.Max(30, Math.Min(240, (int)Math.Round(60000000.0 / midi.InitialTempo))), Bars = Score.MaxBars };
             if (project.Title.Length > 80) project.Title = project.Title.Substring(0, 80).TrimEnd();
+            bool supportedMeter = Score.SupportsMeter(midi.InitialBeats, midi.InitialBeatType);
+            if (supportedMeter) project.SetMeter(midi.InitialBeats, midi.InitialBeatType);
             var result = new MidiImport { Project = project };
             var spans = PairNotes(midi, result);
             int endOfPiece = 0;
@@ -34,7 +36,7 @@ namespace ValeScore
                 {
                     double units = span.Start.Tick * 4.0 / midi.Division;
                     double endUnits = span.End.Tick * 4.0 / midi.Division;
-                    int limit = Score.MaxBars * Score.BarTicks;
+                    int limit = Score.MaxBars * project.BarTicks;
                     if (units >= limit || endUnits > limit + .5 || group.Key.Channel == 9)
                     {
                         result.Skipped++;
@@ -60,7 +62,7 @@ namespace ValeScore
             }
             if (result.Imported == 0)
                 throw new InvalidDataException("O MIDI não contém notas importáveis nesta prévia. Use Abrir MIDI para ouvir o arquivo original.");
-            project.Bars = (endOfPiece + Score.BarTicks - 1) / Score.BarTicks;
+            project.Bars = (endOfPiece + project.BarTicks - 1) / project.BarTicks;
             project.Validate();
             var report = new List<string> {
                 result.Imported + " notas convertidas em " + project.Parts.Count + " conjunto(s) de pautas.",
@@ -69,7 +71,8 @@ namespace ValeScore
                 result.Skipped + " notas omitidas por limites de pauta, extensão, duração, percussão ou pares MIDI incompletos.",
                 "As alturas são escritas com sustenidos, quando necessário. Timbres, dinâmica e pedal pertencem ao MIDI original."
             };
-            if (midi.HasOtherMeter) report.Add("A métrica do arquivo foi convertida para 4/4.");
+            if (!supportedMeter) report.Add("A fórmula inicial do MIDI não é suportada e foi convertida para 4/4.");
+            if (midi.HasMeterChanges) report.Add("A partitura usa uma fórmula fixa. As mudanças de fórmula ficam no MIDI original.");
             if (midi.HasTempoChanges) report.Add("Foi usado o andamento inicial. Mudanças posteriores ficaram no MIDI original.");
             if (60000000.0 / midi.InitialTempo < 30 || 60000000.0 / midi.InitialTempo > 240)
                 report.Add("O andamento inicial foi ajustado à faixa de 30 a 240 BPM.");
@@ -131,8 +134,8 @@ namespace ValeScore
             int count = 0;
             for (int tick = start; tick < end; count++)
             {
-                int available = Math.Min(end - tick, Score.BarTicks - tick % Score.BarTicks);
-                int length = Score.RestLength(tick, available);
+                int available = Math.Min(end - tick, score.BarTicks - tick % score.BarTicks);
+                int length = Score.RestLength(tick % score.BarTicks, available);
                 score.Put(part, staff, tick, length, step, alter);
                 tick += length;
             }

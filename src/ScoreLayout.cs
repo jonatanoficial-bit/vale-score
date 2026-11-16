@@ -15,7 +15,7 @@ namespace ValeScore
         private readonly Dictionary<string, int> lyricWidths = new Dictionary<string, int>();
         private readonly List<Measure[]> systems = new List<Measure[]>();
         private readonly int[] measureSystems;
-        private readonly int rows, systemsPerPage;
+        private readonly int rows, systemsPerPage, barTicks;
 
         public sealed class Measure
         {
@@ -25,6 +25,7 @@ namespace ValeScore
             public float Left { get; private set; }
             public float Width { get; private set; }
             public float Right { get { return Left + Width; } }
+            public int TickCount { get { return positions.Length; } }
             public float MinimumWidth { get { return naturalWidth; } }
 
             internal Measure(int index, float[] offsets, float width)
@@ -39,14 +40,15 @@ namespace ValeScore
 
             public int Nearest(float x)
             {
-                for (int unit = 0; unit < 15; unit++)
+                for (int unit = 0; unit < TickCount - 1; unit++)
                     if (x < (At(unit) + At(unit + 1)) / 2) return unit;
-                return 15;
+                return TickCount - 1;
             }
         }
 
         public ScoreLayout(Score score)
         {
+            barTicks = score.BarTicks;
             var lanes = score.Parts.SelectMany(p => p.Staves).ToArray();
             rows = lanes.Length;
             systemsPerPage = Math.Max(1, 864 / (rows * StaffGap + SystemGap));
@@ -69,7 +71,7 @@ namespace ValeScore
         }
 
         public int PageCount { get { return (systems.Count + systemsPerPage - 1) / systemsPerPage; } }
-        public int PageOf(int tick) { return measureSystems[tick / Score.BarTicks] / systemsPerPage; }
+        public int PageOf(int tick) { return measureSystems[tick / barTicks] / systemsPerPage; }
         public int StaffTop(int system, int row)
         {
             return FirstStaffTop + system * (rows * StaffGap + SystemGap) + row * StaffGap;
@@ -87,10 +89,10 @@ namespace ValeScore
 
         public PointF Position(Score score, StaffPosition position)
         {
-            int bar = position.Tick / Score.BarTicks;
+            int bar = position.Tick / barTicks;
             int row = position.Staff;
             for (int part = 0; part < position.Part; part++) row += score.Parts[part].Staves.Count;
-            return new PointF(MeasureOf(bar).At(position.Tick % Score.BarTicks), StaffTop(measureSystems[bar] % systemsPerPage, row));
+            return new PointF(MeasureOf(bar).At(position.Tick % barTicks), StaffTop(measureSystems[bar] % systemsPerPage, row));
         }
 
         internal static Font TextFont { get { return LyricFont; } }
@@ -99,11 +101,11 @@ namespace ValeScore
 
         private Measure BuildMeasure(List<Note>[] lanes, int bar)
         {
-            int start = bar * Score.BarTicks;
-            var halfWidths = new float[Score.BarTicks];
-            var alterations = new bool[Score.BarTicks];
-            var dots = new int[Score.BarTicks];
-            var links = new List<Tuple<int, float>>[Score.BarTicks];
+            int start = bar * barTicks;
+            var halfWidths = new float[barTicks];
+            var alterations = new bool[barTicks];
+            var dots = new int[barTicks];
+            var links = new List<Tuple<int, float>>[barTicks];
             foreach (var lane in lanes)
             {
                 Note previous = null;
@@ -111,11 +113,11 @@ namespace ValeScore
                 int previousChord = -1, previousDynamic = -1;
                 float previousChordWidth = 0, previousDynamicWidth = 0;
                 var accidentals = new Dictionary<int, int>();
-                foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + Score.BarTicks))
+                foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + barTicks))
                 {
                     int origin = note.Tick - start;
                     int dotCount = Score.DotCount(note.Length);
-                    if (dotCount > 0 && origin + 1 < Score.BarTicks)
+                    if (dotCount > 0 && origin + 1 < barTicks)
                         dots[origin + 1] = Math.Max(dots[origin + 1], dotCount);
                     if (note.IsRest) continue;
                     int unit = note.Tick - start;
@@ -138,7 +140,7 @@ namespace ValeScore
                 }
             }
 
-            var offsets = new float[Score.BarTicks];
+            var offsets = new float[barTicks];
             float end = 0;
             for (int unit = 0; unit < offsets.Length; unit++)
             {

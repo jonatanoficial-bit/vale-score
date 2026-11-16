@@ -13,6 +13,7 @@ namespace ValeScore
         public int Status, Data1, Data2;
         public int Track;
         internal int Tempo;
+        internal int MeterBeats, MeterDenominator;
     }
 
     public sealed class MidiSequence
@@ -23,7 +24,9 @@ namespace ValeScore
         public int Division { get; private set; }
         public int InitialTempo { get; private set; }
         public bool HasTempoChanges { get; private set; }
-        public bool HasOtherMeter { get; private set; }
+        public int InitialBeats { get; private set; }
+        public int InitialBeatType { get; private set; }
+        public bool HasMeterChanges { get; private set; }
 
         private MidiSequence() { }
 
@@ -38,7 +41,7 @@ namespace ValeScore
                 throw new InvalidDataException("O arquivo MIDI deve ter entre 14 bytes e 8 MB.");
             var events = new List<MidiEvent>();
             long lastTick = 0;
-            bool otherMeter = false;
+
             int division, tracks;
             using (var reader = new BinaryReader(stream, Encoding.ASCII, true))
             {
@@ -58,7 +61,7 @@ namespace ValeScore
                     uint size = Number(reader, 4);
                     if (size > stream.Length - stream.Position) throw new InvalidDataException("Pista MIDI incompleta.");
                     if (chunk != "MTrk") { stream.Position += size; continue; }
-                    lastTick = Math.Max(lastTick, ReadTrack(reader.ReadBytes((int)size), events, count, ref otherMeter));
+                    lastTick = Math.Max(lastTick, ReadTrack(reader.ReadBytes((int)size), events, count));
                     count++;
                 }
                 if (count != tracks) throw new InvalidDataException("O arquivo tem pistas ausentes.");
@@ -67,6 +70,8 @@ namespace ValeScore
             int tempo = 500000;
             int initialTempo = tempo;
             bool tempoChanges = false;
+            int beats = 4, beatType = 4;
+            bool meterChanges = false;
             long previous = 0;
             double time = 0;
             var timed = new List<MidiEvent>();
@@ -74,7 +79,12 @@ namespace ValeScore
             {
                 time += (item.Tick - previous) * (double)tempo / (division * 1000000.0);
                 previous = item.Tick;
-                if (item.Tempo != 0)
+                if (item.MeterBeats != 0)
+                {
+                    if (item.Tick == 0) { beats = item.MeterBeats; beatType = item.MeterDenominator; }
+                    else if (item.MeterBeats != beats || item.MeterDenominator != beatType) meterChanges = true;
+                }
+                else if (item.Tempo != 0)
                 {
                     if (item.Tick == 0) initialTempo = item.Tempo;
                     else if (tempo != item.Tempo) tempoChanges = true;
@@ -91,11 +101,11 @@ namespace ValeScore
             return new MidiSequence
             {
                 Events = timed.ToArray(), Duration = time, Tracks = tracks, Division = division,
-                InitialTempo = initialTempo, HasTempoChanges = tempoChanges, HasOtherMeter = otherMeter
+                InitialTempo = initialTempo, HasTempoChanges = tempoChanges, InitialBeats = beats, InitialBeatType = beatType, HasMeterChanges = meterChanges
             };
         }
 
-        private static long ReadTrack(byte[] data, List<MidiEvent> events, int track, ref bool otherMeter)
+        private static long ReadTrack(byte[] data, List<MidiEvent> events, int track)
         {
             long tick = 0;
             int offset = 0, running = 0;
@@ -141,8 +151,9 @@ namespace ValeScore
                 }
                 if (type == 0x58)
                 {
-                    if (size != 4) throw new InvalidDataException("Fórmula de compasso MIDI inválida.");
-                    otherMeter |= data[offset] != 4 || data[offset + 1] != 2;
+                    if (size != 4 || data[offset] == 0 || data[offset + 1] > 30)
+                        throw new InvalidDataException("Fórmula de compasso MIDI inválida.");
+                    Add(events, new MidiEvent { Tick = tick, MeterBeats = data[offset], MeterDenominator = 1 << data[offset + 1] });
                 }
                 offset += size;
             }
@@ -201,8 +212,8 @@ namespace ValeScore
                 BigEndian(writer, 480, 2);
                 WriteTrack(writer, new[] {
                     new EventData { Data = new byte[] { 0xFF, 0x51, 3, (byte)(tempo >> 16), (byte)(tempo >> 8), (byte)tempo } },
-                    new EventData { Data = new byte[] { 0xFF, 0x58, 4, 4, 2, 24, 8 } }
-                }, score.Bars * 1920);
+                    new EventData { Data = new byte[] { 0xFF, 0x58, 4, (byte)score.Beats, (byte)(score.BeatType == 8 ? 3 : 2), (byte)(score.BeatType == 8 ? 36 : 24), 8 } }
+                }, score.Bars * score.BarTicks * 120);
 
                 for (int channel = 0; channel < score.Parts.Count; channel++)
                 {
@@ -242,7 +253,7 @@ namespace ValeScore
                         }
                         AddPitch(data, channel, group.Key, start, end, velocity);
                     }
-                    WriteTrack(writer, data, score.Bars * 1920);
+                    WriteTrack(writer, data, score.Bars * score.BarTicks * 120);
                 }
             }
         }

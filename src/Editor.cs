@@ -33,6 +33,7 @@ namespace ValeScore
         private readonly Label playbackLabel = new Label();
         private readonly TransportRail transportRail = new TransportRail();
         private readonly ComboBox midiOutput = new ComboBox();
+        private readonly ToolStripMenuItem metronome = new ToolStripMenuItem("Metrônomo da partitura") { CheckOnClick = true };
         private readonly ToolStripMenuItem inputMenu = new ToolStripMenuItem("Teclado MIDI");
         private readonly ContextMenuStrip exportMenu = new ContextMenuStrip();
         private readonly List<Button> durationButtons = new List<Button>();
@@ -62,6 +63,9 @@ namespace ValeScore
         private string midiName;
         private bool playingMidiFile;
         private double playbackLength;
+        private double playbackSpeed = 1;
+        private readonly ComboBox speedControl = new ComboBox();
+        private static readonly double[] PlaybackSpeeds = { .5, .75, 1, 1.25, 1.5 };
         private bool preparing, syncingTracks, editingLyric;
         private EditMode mode = EditMode.Select;
         private Score score = Score.New(true);
@@ -117,6 +121,7 @@ namespace ValeScore
             Item(articulationMenu, "Remover articulação", Keys.None, () => ChangeArticulation(null));
             edit.DropDownItems.Add(articulationMenu);
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
+            Item(edit, "Fórmula de compasso…", Keys.None, EditMeter);
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
             Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
             Item(edit, "Copiar compasso atual", Keys.Control | Keys.Shift | Keys.C, CopyCurrentBar);
@@ -136,6 +141,8 @@ namespace ValeScore
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
             var playbackMenu = new ToolStripMenuItem("Reprodução");
             Item(playbackMenu, "Tocar ou parar partitura", Keys.None, Play);
+            playbackMenu.DropDownItems.Add(metronome);
+            metronome.ForeColor = TextColor;
             Item(playbackMenu, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
             Item(playbackMenu, "Tocar ou parar MIDI aberto", Keys.None, PlayLoadedMidi);
             playbackMenu.DropDownItems.Add(inputMenu);
@@ -213,6 +220,7 @@ namespace ValeScore
             }));
             sidebar.Controls.Add(Button("+ Compasso", AddBar));
             sidebar.Controls.Add(Button("Título e andamento", Properties));
+            sidebar.Controls.Add(Button("Fórmula de compasso", EditMeter));
             sidebar.Controls.Add(Caption("SELEÇÃO"));
             selection.Width = 172;
             selection.Height = 80;
@@ -302,6 +310,18 @@ namespace ValeScore
             midiOutput.Margin = new Padding(9, 5, 3, 0);
             midiOutput.DropDown += delegate { RefreshOutputs(); };
             transportControls.Controls.Add(midiOutput);
+            speedControl.Width = 86;
+            speedControl.DropDownStyle = ComboBoxStyle.DropDownList;
+            speedControl.AccessibleName = "Velocidade de reprodução da partitura";
+            speedControl.Margin = new Padding(4, 5, 2, 0);
+            speedControl.Items.AddRange(new object[] { "50%", "75%", "100%", "125%", "150%" });
+            speedControl.SelectedIndex = 2;
+            speedControl.SelectionChangeCommitted += delegate
+            {
+                if (timer.Enabled || preparing) Report("A nova velocidade vale na próxima reprodução.");
+                FocusWorkspace();
+            };
+            transportControls.Controls.Add(speedControl);
             playbackLabel.Text = "0:00 / 0:00";
             playbackLabel.AutoSize = false;
             playbackLabel.Width = 118;
@@ -354,8 +374,8 @@ namespace ValeScore
                     if (midiCancellation == null && clock.Elapsed.TotalSeconds >= playbackLength) Stop();
                     return;
                 }
-                int tick = (int)(clock.Elapsed.TotalSeconds * score.Tempo / 15);
-                if (tick >= score.Bars * 16)
+                int tick = (int)(clock.Elapsed.TotalSeconds * score.Tempo * playbackSpeed / 15);
+                if (tick >= score.Bars * score.BarTicks)
                 {
                     if (midiCancellation == null) Stop();
                 }
@@ -509,8 +529,8 @@ namespace ValeScore
         private void PickPosition(StaffPosition pick, MouseButtons button)
         {
             if (!CommitLyric()) return;
-            if (button == MouseButtons.Left && duration == Score.BarTicks && (mode == EditMode.Rest || mode == EditMode.Write))
-                pick.Tick -= pick.Tick % Score.BarTicks;
+            if (button == MouseButtons.Left && duration == score.BarTicks && (mode == EditMode.Rest || mode == EditMode.Write))
+                pick.Tick -= pick.Tick % score.BarTicks;
             position = pick;
             var note = SelectedNote();
             if (button == MouseButtons.Right || mode == EditMode.Select)
@@ -785,7 +805,7 @@ namespace ValeScore
             if (!CommitLyric()) return;
             int page = sheet.Page + offset;
             if (page < 0 || page >= sheet.Engraving.PageCount) return;
-            position.Tick = sheet.Engraving.OnPage(page).First()[0].Index * Score.BarTicks;
+            position.Tick = sheet.Engraving.OnPage(page).First()[0].Index * score.BarTicks;
             RefreshView();
         }
 
@@ -794,7 +814,7 @@ namespace ValeScore
             if (rebuild) sheet.LoadScore(score);
             position.Part = Math.Min(position.Part, score.Parts.Count - 1);
             position.Staff = Math.Min(position.Staff, score.Parts[position.Part].Staves.Count - 1);
-            position.Tick = Math.Min(position.Tick, score.Bars * 16 - 1);
+            position.Tick = Math.Min(position.Tick, score.Bars * score.BarTicks - 1);
             sheet.Selection = position;
             syncingTracks = true;
             tracks.BeginUpdate();
@@ -816,7 +836,7 @@ namespace ValeScore
             var note = selected != null && !selected.IsRest ? selected : null;
             int step = note == null ? position.Step : note.Step;
             string altered = note == null || note.Alter == 0 ? "" : note.Alter > 0 ? "♯" : "♭";
-            selection.Text = "Compasso " + (position.Tick / 16 + 1) + "  ·  " + (position.Tick % 16 + 1) + "/16\n"
+            selection.Text = "Compasso " + (position.Tick / score.BarTicks + 1) + "  ·  " + (position.Tick % score.BarTicks + 1) + "/" + score.BarTicks + "\n"
                 + (selected != null && selected.IsRest ? "Pausa" : Score.Names[step % 7] + altered + (step / 7))
                 + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, Score.BaseDuration(selected.Length))]
                     + new string('·', Score.DotCount(selected.Length)))
@@ -824,7 +844,7 @@ namespace ValeScore
             bool dirty = Dirty();
             Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
             documentTitle.Text = score.Title;
-            documentInfo.Text = score.Tempo + " BPM  /  4⁄4  /  " + (dirty ? "Editado" : path == null ? "Local" : "Salvo");
+            documentInfo.Text = score.Tempo + " BPM  /  " + score.Beats + "⁄" + score.BeatType + "  /  " + (dirty ? "Editado" : path == null ? "Local" : "Salvo");
             undoButton.Enabled = undo.Count > 0;
             redoButton.Enabled = redo.Count > 0;
             editLyricButton.Enabled = note != null;
@@ -939,7 +959,7 @@ namespace ValeScore
             int denominator = count == 1 ? 2 : 4;
             bool clearing = Score.DotCount(active) == count;
             int length = clearing ? basis : basis * numerator / denominator;
-            if (!clearing && (basis * numerator % denominator != 0 || length > Score.BarTicks))
+            if (!clearing && (basis * numerator % denominator != 0 || length > score.BarTicks))
             {
                 Report("O ponto não cabe na grade rítmica desta figura.");
                 return;
@@ -968,7 +988,7 @@ namespace ValeScore
         private void AdvanceInput()
         {
             int next = position.Tick + duration;
-            if (next < score.Bars * Score.BarTicks)
+            if (next < score.Bars * score.BarTicks)
             {
                 position.Tick = next;
                 RefreshView();
@@ -984,6 +1004,40 @@ namespace ValeScore
             Change(() => score.Bars++);
         }
 
+        private void EditMeter()
+        {
+            if (!CommitLyric()) return;
+            using (var dialog = new Form { Text = "Fórmula de compasso", ClientSize = new Size(334, 135),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, Font = Font })
+            {
+                var meter = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Fórmula",
+                    Bounds = new Rectangle(18, 40, 296, 28) };
+                meter.Items.AddRange(Score.Meters);
+                meter.SelectedIndex = Array.IndexOf(Score.Meters, score.Beats + "/" + score.BeatType);
+                var apply = new Button { Text = "Aplicar", Bounds = new Rectangle(140, 87, 82, 29) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(232, 87, 82, 29) };
+                apply.Click += delegate
+                {
+                    var numbers = ((string)meter.SelectedItem).Split('/');
+                    int bar = position.Tick / score.BarTicks;
+                    if (Change(() => score.SetMeter(int.Parse(numbers[0]), int.Parse(numbers[1]))))
+                    {
+                        SelectBar(bar);
+                        dialog.DialogResult = DialogResult.OK;
+                    }
+                    else MessageBox.Show(dialog, status.Text);
+                };
+                dialog.Controls.AddRange(new Control[] {
+                    new Label { Text = "Fórmula para a partitura inteira", AutoSize = true, Location = new Point(18, 14) },
+                    meter, apply, cancel
+                });
+                dialog.AcceptButton = apply;
+                dialog.CancelButton = cancel;
+                dialog.ShowDialog(this);
+            }
+        }
+
         private void GoToBar()
         {
             if (!CommitLyric()) return;
@@ -992,7 +1046,7 @@ namespace ValeScore
                 MinimizeBox = false, MaximizeBox = false, Font = Font })
             {
                 var number = new NumericUpDown { Minimum = 1, Maximum = score.Bars,
-                    Value = position.Tick / Score.BarTicks + 1, Bounds = new Rectangle(18, 18, 104, 28), AccessibleName = "Número do compasso" };
+                    Value = position.Tick / score.BarTicks + 1, Bounds = new Rectangle(18, 18, 104, 28), AccessibleName = "Número do compasso" };
                 var go = new Button { Text = "Ir para", DialogResult = DialogResult.OK, Bounds = new Rectangle(134, 62, 80, 28) };
                 var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(222, 62, 80, 28) };
                 dialog.Controls.AddRange(new Control[] { number, go, cancel });
@@ -1004,7 +1058,7 @@ namespace ValeScore
 
         private void SelectBar(int bar)
         {
-            position.Tick = bar * Score.BarTicks;
+            position.Tick = bar * score.BarTicks;
             RefreshView();
             RevealCursor();
             Report("Compasso " + (bar + 1) + " de " + score.Bars);
@@ -1013,21 +1067,21 @@ namespace ValeScore
         private void DuplicateCurrentBar()
         {
             if (!CommitLyric()) return;
-            int bar = position.Tick / Score.BarTicks;
+            int bar = position.Tick / score.BarTicks;
             if (Change(() => score.DuplicateBar(bar))) SelectBar(bar + 1);
         }
 
         private void InsertCurrentBar()
         {
             if (!CommitLyric()) return;
-            int bar = position.Tick / Score.BarTicks;
+            int bar = position.Tick / score.BarTicks;
             if (Change(() => score.InsertBar(bar))) SelectBar(bar);
         }
 
         private void CopyCurrentBar()
         {
             if (!CommitLyric()) return;
-            copiedBar = score.CopyBar(position.Tick / Score.BarTicks);
+            copiedBar = score.CopyBar(position.Tick / score.BarTicks);
             Report("Compasso copiado. Ctrl+Shift+V cola nas pautas do compasso atual.");
         }
 
@@ -1035,14 +1089,14 @@ namespace ValeScore
         {
             if (!CommitLyric()) return;
             if (copiedBar == null) { Report("Copie um compasso primeiro."); return; }
-            if (Change(() => score.PasteBar(position.Tick / Score.BarTicks, copiedBar)))
+            if (Change(() => score.PasteBar(position.Tick / score.BarTicks, copiedBar)))
                 Report("Compasso colado. Ctrl+Z desfaz.");
         }
 
         private void RemoveCurrentBar()
         {
             if (!CommitLyric()) return;
-            int bar = position.Tick / Score.BarTicks;
+            int bar = position.Tick / score.BarTicks;
             if (MessageBox.Show(this, "Remover o compasso " + (bar + 1) + " de todas as pautas? Ctrl+Z desfaz.",
                 "Remover compasso", MessageBoxButtons.OKCancel, MessageBoxIcon.Question) != DialogResult.OK) return;
             if (Change(() => score.RemoveBar(bar))) SelectBar(Math.Min(bar, score.Bars - 1));
@@ -1055,7 +1109,7 @@ namespace ValeScore
                 StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
                 MinimizeBox = false, MaximizeBox = false, Font = Font })
             {
-                int bar = position.Tick / Score.BarTicks + 1;
+                int bar = position.Tick / score.BarTicks + 1;
                 var first = new NumericUpDown { Minimum = 1, Maximum = score.Bars, Value = bar, AccessibleName = "Primeiro compasso" };
                 var last = new NumericUpDown { Minimum = 1, Maximum = score.Bars, Value = bar, AccessibleName = "Último compasso" };
                 var method = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Tipo de transposição" };
@@ -1120,7 +1174,7 @@ namespace ValeScore
             {
                 int direction = key == Keys.Right ? 1 : -1;
                 if (mode != EditMode.Write && mode != EditMode.Rest && MoveToAdjacentNote(direction)) return true;
-                position.Tick = Math.Max(0, Math.Min(score.Bars * 16 - 1, position.Tick + direction));
+                position.Tick = Math.Max(0, Math.Min(score.Bars * score.BarTicks - 1, position.Tick + direction));
                 var note = SelectedNote();
                 if (note != null) position.Step = note.Step;
                 RefreshView();
@@ -1539,7 +1593,9 @@ namespace ValeScore
             midiCancellation = cancellation;
             try
             {
-                playbackLength = file == null ? score.Bars * 240.0 / score.Tempo : file.Duration;
+                playbackSpeed = file == null ? PlaybackSpeeds[speedControl.SelectedIndex] : 1;
+                double speed = playbackSpeed;
+                playbackLength = (file == null ? score.Bars * score.BarTicks * 15.0 / score.Tempo : file.Duration) / speed;
                 UpdateTransport(0);
                 if (output != null)
                 {
@@ -1557,14 +1613,15 @@ namespace ValeScore
                     preparing = false;
                     timer.Start();
                     Report(file == null ? "Partitura · " + output.Name : midiName + " · " + output.Name);
-                    midiPlaybackTask = MidiDevices.Play(sequence, output, clock, cancellation.Token);
+                    midiPlaybackTask = MidiDevices.Play(sequence, output, clock, cancellation.Token, speed);
                     await midiPlaybackTask;
                     if (generation == playbackGeneration && !IsDisposed) Stop();
                     return;
                 }
 
                 var snapshot = file == null ? Score.Restore(score.Snapshot()) : null;
-                var wave = await Task.Run(() => file == null ? Output.Wave(snapshot) : Output.MidiWave(file, cancellation.Token));
+                bool click = metronome.Checked;
+                var wave = await Task.Run(() => file == null ? Output.Wave(snapshot, click, speed) : Output.MidiWave(file, cancellation.Token));
                 if (generation != playbackGeneration || IsDisposed) { wave.Dispose(); return; }
                 playback = wave;
                 player = new SoundPlayer(playback);

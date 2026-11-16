@@ -106,14 +106,14 @@ namespace ValeScore
                 {
                     int top = Engraving.StaffTop(system, row);
                     if (y < top - 25 || y >= top + 85 + (row == lastRow ? 9 : 0)) continue;
-                    int start = measure.Index * Score.BarTicks;
+                    int start = measure.Index * measure.TickCount;
                     int tick = start + measure.Nearest(x);
                     int step = BottomStep(staff) + (int)Math.Round((top + 40 - y) / 5.0);
                     int min = staff == 0 ? 25 : 13;
                     step = Math.Max(min, Math.Min(min + 18, step));
                     var lane = Music.Parts[part].Staves[staff];
                     bool lyricRow = y >= top + ScoreLayout.LyricY - 2;
-                    var note = lane.Where(n => n.Tick >= start && n.Tick < start + Score.BarTicks &&
+                    var note = lane.Where(n => n.Tick >= start && n.Tick < start + measure.TickCount &&
                         (lyricRow ? n.Lyric != null : Math.Abs(y - (n.IsRest ? RestY(top, n.Length) : NoteY(top, staff, n))) < (n.IsRest ? 15 : 11)))
                         .OrderBy(n => Math.Abs(EventX(measure, n) - x)).FirstOrDefault();
                     if (note != null && Math.Abs(EventX(measure, note) - x) <= (lyricRow ? 24 : 8))
@@ -130,7 +130,7 @@ namespace ValeScore
         private static float RestY(int top, int length) { return top + (length == 16 ? 12 : length == 8 ? 18 : 20); }
         private static float EventX(ScoreLayout.Measure measure, Note note)
         {
-            return note.IsRest && note.Length == Score.BarTicks ? measure.Left + measure.Width / 2 : measure.At(note.Tick % Score.BarTicks);
+            return note.IsRest && note.Length == measure.TickCount && note.Length == 16 ? measure.Left + measure.Width / 2 : measure.At(note.Tick % measure.TickCount);
         }
 
         public static void Draw(Graphics g, Score score, int page, StaffPosition selected, int playing)
@@ -192,11 +192,11 @@ namespace ValeScore
                             int y = layout.StaffTop(system, row);
                             bool laneSelected = selected != null && selected.Part == part && selected.Staff == staff;
                             var lane = instrument.Staves[staff];
-                            if (laneSelected && selected.Tick >= first * 16 && selected.Tick < after * 16)
+                            if (laneSelected && selected.Tick >= first * score.BarTicks && selected.Tick < after * score.BarTicks)
                             {
-                                var measure = layout.MeasureOf(selected.Tick / 16);
+                                var measure = layout.MeasureOf(selected.Tick / score.BarTicks);
                                 var symbol = lane.Find(n => n.Tick == selected.Tick);
-                                float x = symbol == null ? measure.At(selected.Tick % 16) : EventX(measure, symbol);
+                                float x = symbol == null ? measure.At(selected.Tick % score.BarTicks) : EventX(measure, symbol);
                                 g.FillRectangle(guide, x - 8, y - 19, 16, 76);
                             }
 
@@ -204,8 +204,8 @@ namespace ValeScore
                             DrawClef(g, ink, line, staff, y);
                             if (first == 0)
                             {
-                                g.DrawString("4", meter, ink, 99, y - 4);
-                                g.DrawString("4", meter, ink, 99, y + 16);
+                                g.DrawString(score.Beats.ToString(), meter, ink, score.Beats >= 10 ? 91 : 99, y - 4);
+                                g.DrawString(score.BeatType.ToString(), meter, ink, 99, y + 16);
                             }
                             g.DrawLine(line, endX, y, endX, y + 40);
                             if (after == score.Bars) g.FillRectangle(ink, endX + 3, y, 3, 41);
@@ -214,28 +214,28 @@ namespace ValeScore
                             {
                                 g.DrawLine(line, measure.Left, y, measure.Left, y + 40);
                                 if (row == 0) g.DrawString((measure.Index + 1).ToString(), small, ink, measure.Left + 4, y - 20);
-                                DrawMeasure(g, ink, accent, line, measure, lane, staff, y, laneSelected ? selected.Tick : -1, playing);
+                                DrawMeasure(g, ink, accent, line, measure, lane, staff, y, score.BeatTicks, laneSelected ? selected.Tick : -1, playing);
                             }
 
-                            DrawLyrics(g, layout, lane, first, after, y, ink, center);
-                            foreach (var item in lane.Where(n => n.Tick >= first * Score.BarTicks && n.Tick < after * Score.BarTicks))
+                            DrawLyrics(g, layout, lane, first, after, y, score.BarTicks, ink, center);
+                            foreach (var item in lane.Where(n => n.Tick >= first * score.BarTicks && n.Tick < after * score.BarTicks))
                             {
                                 if (item.Chord == null && item.Dynamic == null) continue;
-                                float x = EventX(layout.MeasureOf(item.Tick / Score.BarTicks), item);
+                                float x = EventX(layout.MeasureOf(item.Tick / score.BarTicks), item);
                                 if (item.Chord != null)
                                     g.DrawString(item.Chord, ScoreLayout.ChordFont, ink, new PointF(x, y - 37), center);
                                 if (item.Dynamic != null)
                                     g.DrawString(item.Dynamic, ScoreLayout.DynamicFont, ink, new PointF(x, y + 54), center);
                             }
                             if (hover != null && hover.Part == part && hover.Staff == staff &&
-                                hover.Tick >= first * 16 && hover.Tick < after * 16 && !hover.HitNote)
+                                hover.Tick >= first * score.BarTicks && hover.Tick < after * score.BarTicks && !hover.HitNote)
                             {
-                                float x = layout.MeasureOf(hover.Tick / 16).At(hover.Tick % 16);
+                                float x = layout.MeasureOf(hover.Tick / score.BarTicks).At(hover.Tick % score.BarTicks);
                                 if (previewRest)
                                 {
                                     if (previewLength == 16)
                                     {
-                                        var measure = layout.MeasureOf(hover.Tick / 16);
+                                        var measure = layout.MeasureOf(hover.Tick / score.BarTicks);
                                         x = measure.Left + measure.Width / 2;
                                     }
                                     DrawRest(g, ghost, x, y, previewLength);
@@ -254,17 +254,17 @@ namespace ValeScore
             }
         }
 
-        private static void DrawLyrics(Graphics g, ScoreLayout layout, List<Note> lane, int first, int after, int y, Brush ink, StringFormat center)
+        private static void DrawLyrics(Graphics g, ScoreLayout layout, List<Note> lane, int first, int after, int y, int barTicks, Brush ink, StringFormat center)
         {
             using (var trimmed = new StringFormat(center) { FormatFlags = StringFormatFlags.NoWrap, Trimming = StringTrimming.EllipsisCharacter })
             {
                 for (int i = 0; i < lane.Count; i++)
                 {
                     var note = lane[i];
-                    int bar = note.Tick / Score.BarTicks;
+                    int bar = note.Tick / barTicks;
                     if (note.Lyric == null || bar < first || bar >= after) continue;
                     var measure = layout.MeasureOf(bar);
-                    float x = measure.At(note.Tick % Score.BarTicks);
+                    float x = measure.At(note.Tick % measure.TickCount);
                     float ratio = measure.Width / measure.MinimumWidth;
                     float width = g.MeasureString(note.Lyric, ScoreLayout.TextFont).Width;
                     if (ratio >= 1)
@@ -282,11 +282,11 @@ namespace ValeScore
                     var next = lane.Find(n => !n.IsRest && n.Tick > note.Tick);
                     if (next != null)
                     {
-                        int nextBar = next.Tick / Score.BarTicks;
+                        int nextBar = next.Tick / barTicks;
                         if (next.Lyric != null && nextBar < after)
                         {
                             var nextMeasure = layout.MeasureOf(nextBar);
-                            float nextX = nextMeasure.At(next.Tick % Score.BarTicks);
+                            float nextX = nextMeasure.At(next.Tick % barTicks);
                             float nextWidth = g.MeasureString(next.Lyric, ScoreLayout.TextFont).Width * Math.Min(1, nextMeasure.Width / nextMeasure.MinimumWidth);
                             float rightEdge = nextX - nextWidth / 2 + 2;
                             if (rightEdge - leftEdge < 6) continue;
@@ -338,18 +338,18 @@ namespace ValeScore
         }
 
         private static void DrawMeasure(Graphics g, Brush ink, Brush accent, Pen line, ScoreLayout.Measure measure,
-            List<Note> lane, int staff, int top, int selected, int playing)
+            List<Note> lane, int staff, int top, int beatTicks, int selected, int playing)
         {
-            int start = measure.Index * Score.BarTicks;
-            int end = start + Score.BarTicks;
+            int start = measure.Index * measure.TickCount;
+            int end = start + measure.TickCount;
             var events = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
             var accidentals = new Dictionary<int, int>();
             int cursor = start;
             for (int i = 0; i < events.Length;)
             {
                 var item = events[i];
-                DrawGaps(g, ink, measure, top, ref cursor, item.Tick);
-                int groupEnd = Score.BeamGroupEnd(events, i);
+                DrawGaps(g, ink, measure, top, ref cursor, item.Tick, beatTicks);
+                int groupEnd = Score.BeamGroupEnd(events, i, start, beatTicks);
                 bool beamed = groupEnd > i + 1;
                 int direction = 0;
                 float xStart = 0, xEnd = 0, beamY = 0, rise = 0;
@@ -412,17 +412,23 @@ namespace ValeScore
                     }
                 }
             }
-            DrawGaps(g, ink, measure, top, ref cursor, end);
+            DrawGaps(g, ink, measure, top, ref cursor, end, beatTicks);
         }
 
-        private static void DrawGaps(Graphics g, Brush ink, ScoreLayout.Measure measure, int top, ref int cursor, int until)
+        private static void DrawGaps(Graphics g, Brush ink, ScoreLayout.Measure measure, int top, ref int cursor, int until, int beatTicks)
         {
-            int start = measure.Index * Score.BarTicks;
+            int start = measure.Index * measure.TickCount;
             while (cursor < until)
             {
-                int length = Score.RestLength(cursor, until - cursor);
-                float x = length == Score.BarTicks ? measure.Left + measure.Width / 2 : measure.At(cursor - start);
-                MusicGlyphs.Rest(g, ink, x, top, length);
+                if (cursor == start && until - start == measure.TickCount)
+                {
+                    MusicGlyphs.Rest(g, ink, measure.Left + measure.Width / 2, top, 16);
+                    cursor = until;
+                    return;
+                }
+                int length = Score.RestLength(cursor - start, until - cursor, beatTicks);
+                float x = length == measure.TickCount ? measure.Left + measure.Width / 2 : measure.At(cursor - start);
+                DrawRest(g, ink, x, top, length);
                 cursor += length;
             }
         }

@@ -114,6 +114,17 @@ namespace ValeScore
                 double.IsNaN(tempo) || double.IsInfinity(tempo)) tempo = 120;
             var score = new Score { Title = Label(title, "Partitura importada", 80), Author = Label(author, "", 80),
                 Bars = bars, Tempo = (int)Math.Round(Math.Max(30, Math.Min(240, tempo))) };
+            var meters = root.Elements("part").Elements("measure").Elements("attributes").Elements("time").ToArray();
+            if (meters.Length > 0)
+            {
+                int beats = Integer(meters[0].Element("beats"), -1);
+                int beatType = Integer(meters[0].Element("beat-type"), -1);
+                if (!Score.SupportsMeter(beats, beatType) || meters.Any(time => time.Elements("beats").Count() != 1 ||
+                    time.Elements("beat-type").Count() != 1 || Integer(time.Element("beats"), -1) != beats ||
+                    Integer(time.Element("beat-type"), -1) != beatType))
+                    throw new InvalidDataException("Use uma fórmula fixa de 2/4, 3/4, 4/4, 6/8, 9/8 ou 12/8.");
+                score.SetMeter(beats, beatType);
+            }
             var result = new MusicXmlImport { Project = score };
             var names = root.Descendants("score-part").ToLookup(e => (string)e.Attribute("id") ?? "");
             foreach (var source in parts)
@@ -144,6 +155,7 @@ namespace ValeScore
         private static void ReadPart(XElement source, MusicXmlImport result, int part, int staves)
         {
             int divisions = 1, bar = 0;
+            int barTicks = result.Project.BarTicks;
             foreach (var measure in source.Elements("measure"))
             {
                 double cursor = 0, previous = 0;
@@ -157,10 +169,7 @@ namespace ValeScore
                     {
                         divisions = Integer(child.Element("divisions"), divisions);
                         if (divisions < 1 || divisions > 1000000) throw new InvalidDataException("Divisões MusicXML inválidas.");
-                        foreach (var time in child.Elements("time"))
-                            if ((string)time.Element("beats") != "4" || (string)time.Element("beat-type") != "4" ||
-                                time.Elements("beats").Count() != 1)
-                                throw new InvalidDataException("A importação MusicXML desta prévia aceita partituras em 4/4.");
+
                         if (child.Elements("key").Any(k => Integer(k.Element("fifths"), 0) != 0) ||
                             child.Element("transpose") != null) result.Normalized++;
                         continue;
@@ -174,12 +183,12 @@ namespace ValeScore
                         int tickOfMark = (int)Math.Round(atPosition, MidpointRounding.AwayFromZero);
                         string text = kind == "harmony" ? ChordSymbol.Read(child) :
                             marks.Select(e => e.Name.LocalName).FirstOrDefault(n => Score.Dynamics.Contains(n));
-                        if (staffNumber < 1 || staffNumber > staves || tickOfMark < 0 || tickOfMark >= Score.BarTicks || text == null)
+                        if (staffNumber < 1 || staffNumber > staves || tickOfMark < 0 || tickOfMark >= barTicks || text == null)
                             result.Omitted++;
                         else
                         {
                             var target = kind == "harmony" ? chords : dynamics;
-                            int key = (staffNumber - 1) * Score.BarTicks + tickOfMark;
+                            int key = (staffNumber - 1) * barTicks + tickOfMark;
                             if (target.ContainsKey(key)) result.Omitted++;
                             target[key] = text;
                         }
@@ -200,19 +209,24 @@ namespace ValeScore
                     if (!chord) { previous = cursor; cursor += length; }
                     if (kind == "forward") continue;
                     int staff = Integer(child.Element("staff"), 1) - 1;
-                    if (staff < 0 || staff >= staves || length <= 0 || start < -.00001 || start >= 16 || start + length > 16.00001)
+                    if (staff < 0 || staff >= staves || length <= 0 || start < -.00001 || start >= barTicks || start + length > barTicks + .00001)
                     {
                         result.Omitted++;
                         continue;
                     }
                     int tick = (int)Math.Round(start, MidpointRounding.AwayFromZero);
                     int end = Math.Max(tick + 1, (int)Math.Round(start + length, MidpointRounding.AwayFromZero));
-                    if (!Score.IsSupportedDuration(end - tick) || end > 16 || tick < ends[staff])
+                    if (start == 0 && end == barTicks && child.Element("rest") != null && (string)child.Element("rest").Attribute("measure") == "yes")
+                    {
+                        ends[staff] = end;
+                        continue;
+                    }
+                    if (!Score.IsSupportedDuration(end - tick) || end > barTicks || tick < ends[staff])
                     {
                         result.Omitted++;
                         continue;
                     }
-                    int at = bar * Score.BarTicks + tick;
+                    int at = bar * barTicks + tick;
                     if (child.Element("rest") != null) result.Project.PutRest(part, staff, at, end - tick);
                     else
                     {
@@ -244,9 +258,9 @@ namespace ValeScore
                 var usedChords = new HashSet<int>();
                 var usedDynamics = new HashSet<int>();
                 for (int staff = 0; staff < staves; staff++)
-                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / Score.BarTicks == bar))
+                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / barTicks == bar))
                 {
-                    int key = staff * Score.BarTicks + note.Tick % Score.BarTicks;
+                    int key = staff * barTicks + note.Tick % barTicks;
                     string chord, marking;
                     if (chords.TryGetValue(key, out chord)) usedChords.Add(key);
                     if (dynamics.TryGetValue(key, out marking)) usedDynamics.Add(key);

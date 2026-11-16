@@ -40,9 +40,15 @@ namespace ValeScore
         public const int SampleRate = 22050;
         public static MemoryStream Wave(Score score)
         {
+            return Wave(score, false);
+        }
+
+        public static MemoryStream Wave(Score score, bool metronome, double speed = 1)
+        {
             score.Validate();
-            double tick = SampleRate * 15.0 / score.Tempo;
-            int size = (int)Math.Ceiling(score.Bars * Score.BarTicks * tick);
+            if (double.IsNaN(speed) || speed < .5 || speed > 1.5) throw new ArgumentOutOfRangeException("speed");
+            double tick = SampleRate * 15.0 / (score.Tempo * speed);
+            int size = (int)Math.Ceiling(score.Bars * score.BarTicks * tick);
             var samples = new float[size];
             double gain = 0.68 / Math.Sqrt(score.Parts.Sum(p => p.Staves.Count));
             foreach (var part in score.Parts)
@@ -59,6 +65,20 @@ namespace ValeScore
                         int count = (int)Math.Round((note.Tick + note.Length * Articulations.SoundLength(note.Articulation)) * tick) - start;
                         AddTone(samples, start, count, note.Midi, gain * Articulations.Attack(note.Articulation, velocity) / 88, decay);
                     }
+                }
+            }
+            if (metronome)
+            {
+                int total = score.Bars * score.BarTicks;
+                for (int beat = 0; beat < total; beat += score.BeatTicks)
+                {
+                    int start = (int)Math.Round(beat * tick);
+                    int count = Math.Min(samples.Length - start, SampleRate / 26);
+                    bool downbeat = beat % score.BarTicks == 0;
+                    double frequency = downbeat ? 1480 : 990;
+                    for (int i = 0; i < count; i++)
+                        samples[start + i] += (float)(.17 * Math.Sin(2 * Math.PI * frequency * i / SampleRate) *
+                            Math.Min(1, i / 16.0) * Math.Pow(1 - i / (double)count, 2));
                 }
             }
             return WriteWave(samples);
@@ -210,8 +230,8 @@ namespace ValeScore
                             xml.WriteElementString("fifths", "0");
                             xml.WriteEndElement();
                             xml.WriteStartElement("time");
-                            xml.WriteElementString("beats", "4");
-                            xml.WriteElementString("beat-type", "4");
+                            xml.WriteElementString("beats", score.Beats.ToString());
+                            xml.WriteElementString("beat-type", score.BeatType.ToString());
                             xml.WriteEndElement();
                             if (part.Staves.Count > 1) xml.WriteElementString("staves", "2");
                             for (int staff = 0; staff < part.Staves.Count; staff++)
@@ -235,11 +255,11 @@ namespace ValeScore
                             if (staff > 0)
                             {
                                 xml.WriteStartElement("backup");
-                                xml.WriteElementString("duration", "16");
+                                xml.WriteElementString("duration", score.BarTicks.ToString());
                                 xml.WriteEndElement();
                             }
-                            int start = bar * 16;
-                            int end = start + 16;
+                            int start = bar * score.BarTicks;
+                            int end = start + score.BarTicks;
                             int cursor = start;
                             var lane = part.Staves[staff];
                             var previous = lane.LastOrDefault(n => n.Tick < start && !n.IsRest);
@@ -251,11 +271,11 @@ namespace ValeScore
                                 if (i >= groupEnd)
                                 {
                                     groupStart = i;
-                                    groupEnd = Score.BeamGroupEnd(events, i);
+                                    groupEnd = Score.BeamGroupEnd(events, i, start, score.BeatTicks);
                                 }
                                 while (cursor < note.Tick)
                                 {
-                                    int rest = Score.RestLength(cursor, note.Tick - cursor);
+                                    int rest = Score.RestLength(cursor - start, note.Tick - cursor, score.BeatTicks);
                                     WriteNote(xml, null, rest, staff, part.Staves.Count > 1);
                                     cursor += rest;
                                 }
@@ -269,8 +289,9 @@ namespace ValeScore
                             }
                             while (cursor < end)
                             {
-                                int rest = Score.RestLength(cursor, end - cursor);
-                                WriteNote(xml, null, rest, staff, part.Staves.Count > 1);
+                                bool entireBar = cursor == start;
+                                int rest = entireBar ? score.BarTicks : Score.RestLength(cursor - start, end - cursor, score.BeatTicks);
+                                WriteNote(xml, null, rest, staff, part.Staves.Count > 1, fullMeasure: entireBar);
                                 cursor += rest;
                             }
                         }
@@ -298,13 +319,13 @@ namespace ValeScore
             xml.WriteEndElement();
         }
 
-        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false, string beam = null)
+        private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano, bool fromPrevious = false, string beam = null, bool fullMeasure = false)
         {
             xml.WriteStartElement("note");
             if (note == null || note.IsRest)
             {
                 xml.WriteStartElement("rest");
-                if (length == Score.BarTicks) xml.WriteAttributeString("measure", "yes");
+                if (fullMeasure) xml.WriteAttributeString("measure", "yes");
                 xml.WriteEndElement();
             }
             else
@@ -317,8 +338,8 @@ namespace ValeScore
             }
             xml.WriteElementString("duration", length.ToString());
             xml.WriteElementString("voice", (staff + 1).ToString());
-            xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, Score.BaseDuration(length))]);
-            for (int i = 0; i < Score.DotCount(length); i++) xml.WriteElementString("dot", "");
+            if (!fullMeasure) xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, Score.BaseDuration(length))]);
+            for (int i = 0; !fullMeasure && i < Score.DotCount(length); i++) xml.WriteElementString("dot", "");
             if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
             if (beam != null)
             {
