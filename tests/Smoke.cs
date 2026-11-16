@@ -32,6 +32,9 @@ internal static class Smoke
         expression.Put(0, 0, 8, 4, 30, 0);
         expression.SetExpression(0, 0, 0, "G7/B", "ppp");
         expression.SetExpression(0, 0, 8, "Bbadd9", "fff");
+        expression.SetArticulation(0, 0, 0, "staccato");
+        expression.SetArticulation(0, 0, 4, "tenuto");
+        expression.SetArticulation(0, 0, 8, "strong-accent");
         expression.Validate();
         var markedLayout = new ScoreLayout(expression);
         using (var image = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
@@ -44,6 +47,8 @@ internal static class Smoke
                 .Any(px => Enumerable.Range(top, 15).Any(py => image.GetPixel(px, py).R < 110));
             Assert(hasInk(ScoreLayout.FirstStaffTop - 37) && hasInk(ScoreLayout.FirstStaffTop + 54),
                 "Cifra acima e dinâmica abaixo da pauta são desenhadas");
+            Assert(image.GetPixel(x, ScoreLayout.FirstStaffTop - 8).R < 110,
+                "Staccato fica separado da dinâmica sob a nota");
             image.Save(Path.Combine(directory, "expressao.png"));
         }
         using (var xml = new MemoryStream())
@@ -55,14 +60,19 @@ internal static class Smoke
             Assert(converted.Omitted == 0 && figures[0].Chord == "G7/B" && figures[0].Dynamic == "ppp" &&
                 figures[2].Chord == "Bbadd9" && figures[2].Dynamic == "fff",
                 "MusicXML preserva cifras estruturadas, baixo alternativo e dinâmicas");
+            Assert(figures.Take(3).Select(n => n.Articulation).SequenceEqual(new[] { "staccato", "tenuto", "strong-accent" }),
+                "MusicXML preserva articulações");
         }
         using (var midi = new MemoryStream())
         {
             MidiSequence.Export(expression, midi);
             midi.Position = 0;
-            var attacks = MidiSequence.Read(midi).Events.Where(e => (e.Status & 240) == 0x90);
-            Assert(attacks.Select(e => e.Data2).SequenceEqual(new[] { 24, 24, 125 }),
+            var events = MidiSequence.Read(midi).Events;
+            var attacks = events.Where(e => (e.Status & 240) == 0x90);
+            Assert(attacks.Select(e => e.Data2).SequenceEqual(new[] { 24, 24, 127 }),
                 "Velocidade MIDI acompanha a dinâmica até a próxima marca");
+            Assert(events.Where(e => (e.Status & 240) == 0x80).Select(e => e.Tick).SequenceEqual(new long[] { 264, 960, 1320 }),
+                "MIDI encurta staccato e marcato e conserva o tenuto");
         }
         using (var wave = Output.Wave(expression))
         {
@@ -71,7 +81,13 @@ internal static class Smoke
             Func<int, int> peak = beatIndex => Enumerable.Range(0, beat - 1)
                 .Max(i => Math.Abs((int)BitConverter.ToInt16(data, 44 + ((beatIndex * beat) + i) * 2)));
             Assert(peak(2) > peak(0) * 3, "Dinâmica altera o volume do WAV");
+            Assert(Enumerable.Range(beat * 3 / 4, beat / 8).All(i => BitConverter.ToInt16(data, 44 + i * 2) == 0),
+                "WAV deixa silêncio após o staccato");
         }
+        var copyExpression = Score.Restore(expression.Snapshot());
+        copyExpression.PasteBar(1, expression.CopyBar(0));
+        Assert(copyExpression.Parts[0].Staves[0].First(n => n.Tick == 16).Articulation == "staccato",
+            "Projeto e cópia de compasso preservam a articulação");
         expression.Transpose(0, 0, null, 2, true);
         Assert(expression.Parts[0].Staves[0][0].Chord == "A7/C#" &&
             expression.Parts[0].Staves[0][2].Chord == "Cadd9", "Transposição move cifra e baixo alternativo");

@@ -226,6 +226,10 @@ namespace ValeScore
                             alteration < -1 || alteration > 1) { result.Omitted++; continue; }
                         result.Project.Put(part, staff, at, end - tick, step, alteration);
                         result.Notes++;
+                        var marksOnNote = child.Elements("notations").Elements("articulations").Elements().ToArray();
+                        var articulation = marksOnNote.FirstOrDefault(e => Articulations.XmlNames.Contains(e.Name.LocalName));
+                        if (articulation != null) result.Project.SetArticulation(part, staff, at, articulation.Name.LocalName);
+                        result.Omitted += marksOnNote.Length - (articulation == null ? 0 : 1);
                         var lyric = child.Elements("lyric").FirstOrDefault();
                         if (lyric != null)
                         {

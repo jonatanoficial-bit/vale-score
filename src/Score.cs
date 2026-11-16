@@ -19,6 +19,7 @@ namespace ValeScore
         [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
         [DataMember(EmitDefaultValue = false)] public string Chord;
         [DataMember(EmitDefaultValue = false)] public string Dynamic;
+        [DataMember(EmitDefaultValue = false)] public string Articulation;
         [DataMember(EmitDefaultValue = false)] public bool IsRest;
 
         public int Midi
@@ -40,7 +41,7 @@ namespace ValeScore
     {
         public const int BarTicks = 16;
         public const int MaxBars = 64;
-        public const int CurrentVersion = 5;
+        public const int CurrentVersion = 6;
         public static readonly string[] Dynamics = { "ppp", "pp", "p", "mp", "mf", "f", "ff", "fff" };
         public static int Velocity(string dynamic)
         {
@@ -124,6 +125,7 @@ namespace ValeScore
                     note.HyphenAfter = previous.HyphenAfter;
                     note.Chord = previous.Chord;
                     note.Dynamic = previous.Dynamic;
+                    note.Articulation = previous.Articulation;
                 }
                 notes.Remove(previous);
             }
@@ -141,6 +143,15 @@ namespace ValeScore
             if (dynamic != null && !Dynamics.Contains(dynamic)) throw new InvalidOperationException("Dinâmica inválida.");
             note.Chord = symbol == null ? null : symbol.Text;
             note.Dynamic = dynamic;
+        }
+
+        public void SetArticulation(int part, int staff, int tick, string articulation)
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            if (note == null) throw new InvalidOperationException("Selecione uma nota para editar a articulação.");
+            if (articulation != null && !Articulations.XmlNames.Contains(articulation))
+                throw new InvalidOperationException("Articulação inválida.");
+            note.Articulation = articulation;
         }
 
         public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter)
@@ -167,10 +178,12 @@ namespace ValeScore
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
-            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter && n.Chord == null && n.Dynamic == null;
+            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter &&
+                n.Chord == null && n.Dynamic == null && n.Articulation == null;
             ChordSymbol symbol;
             if ((n.Chord != null && !ChordSymbol.TryParse(n.Chord, out symbol)) ||
-                (n.Dynamic != null && !Dynamics.Contains(n.Dynamic))) return false;
+                (n.Dynamic != null && !Dynamics.Contains(n.Dynamic)) ||
+                (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation))) return false;
             return n.Step >= 0 && n.Step <= 69 && n.Alter >= -1 && n.Alter <= 1 && n.Midi >= 0 && n.Midi <= 127;
         }
 
@@ -278,7 +291,8 @@ namespace ValeScore
                 var copies = staff.Where(n => n.Tick >= start && n.Tick < end).Select(n => new Note
                 {
                     Tick = n.Tick + BarTicks, Length = n.Length, Step = n.Step, Alter = n.Alter,
-                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord, Dynamic = n.Dynamic
+                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
+                    Dynamic = n.Dynamic, Articulation = n.Articulation
                 }).ToArray();
                 foreach (var note in staff.Where(n => n.Tick >= end)) note.Tick += BarTicks;
                 staff.AddRange(copies);
@@ -317,7 +331,8 @@ namespace ValeScore
                 staff.AddRange(sources[i].Select(n => new Note
                 {
                     Tick = start + n.Tick, Length = n.Length, Step = n.Step, Alter = n.Alter,
-                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord, Dynamic = n.Dynamic
+                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
+                    Dynamic = n.Dynamic, Articulation = n.Articulation
                 }));
                 staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
             }

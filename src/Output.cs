@@ -56,8 +56,8 @@ namespace ValeScore
                         if (note.IsRest) continue;
                         if (note.Dynamic != null) velocity = Score.Velocity(note.Dynamic);
                         int start = (int)Math.Round(note.Tick * tick);
-                        int count = (int)Math.Round((note.Tick + note.Length) * tick) - start;
-                        AddTone(samples, start, count, note.Midi, gain * velocity / 88, decay);
+                        int count = (int)Math.Round((note.Tick + note.Length * Articulations.SoundLength(note.Articulation)) * tick) - start;
+                        AddTone(samples, start, count, note.Midi, gain * Articulations.Attack(note.Articulation, velocity) / 88, decay);
                     }
                 }
             }
@@ -330,6 +330,14 @@ namespace ValeScore
                     xml.WriteString(beam);
                     xml.WriteEndElement();
                 }
+            }
+            if (note != null && note.Articulation != null)
+            {
+                xml.WriteStartElement("notations");
+                xml.WriteStartElement("articulations");
+                xml.WriteElementString(note.Articulation, "");
+                xml.WriteEndElement();
+                xml.WriteEndElement();
             }
             if (note != null && !note.IsRest && note.Lyric != null)
             {

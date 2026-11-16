@@ -384,6 +384,14 @@ namespace ValeScore
                         accidentals.TryGetValue(n.Step, out prior);
                         float? stemEnd = beamed ? (float?)(beamY + rise * (x - xStart) / (xEnd - xStart)) : null;
                         DrawNote(g, color, line, x, top, n.Step - BottomStep(staff), n.Length, n.Alter, prior != n.Alter, direction, stemEnd);
+                        if (n.Articulation != null)
+                        {
+                            bool above = n.Step >= BottomStep(staff) + 4 || n.Articulation == "strong-accent" ||
+                                n.Dynamic != null || n.Lyric != null;
+                            float pitchY = NoteY(top, staff, n);
+                            float y = above ? Math.Min(top - 8, pitchY - 10) : Math.Max(top + 48, pitchY + 10);
+                            Articulations.Draw(g, color, n.Articulation, x, y, above);
+                        }
                         accidentals[n.Step] = n.Alter;
                     }
                     cursor = n.Tick + n.Length;

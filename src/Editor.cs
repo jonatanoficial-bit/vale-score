@@ -107,7 +107,15 @@ namespace ValeScore
             Item(edit, "Refazer", Keys.Control | Keys.Y, () => History(redo, undo));
             Item(edit, "Editar letra da nota", Keys.None, StartLyrics).ShortcutKeyDisplayString = "Shift+L";
             Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
-            Item(edit, "Cifra e dinâmica…", Keys.Control | Keys.H, EditExpression);
+            Item(edit, "Cifra, dinâmica e articulação…", Keys.Control | Keys.H, EditExpression);
+            var articulationMenu = new ToolStripMenuItem("Articulação da nota") { ForeColor = TextColor };
+            for (int i = 0; i < Articulations.Names.Length; i++)
+            {
+                string mark = Articulations.XmlNames[i];
+                Item(articulationMenu, Articulations.Names[i], Keys.None, () => ChangeArticulation(mark));
+            }
+            Item(articulationMenu, "Remover articulação", Keys.None, () => ChangeArticulation(null));
+            edit.DropDownItems.Add(articulationMenu);
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
             Item(edit, "Adicionar compasso", Keys.None, AddBar);
             Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
@@ -213,7 +221,7 @@ namespace ValeScore
             editLyricButton = Button("Editar letra", StartLyrics);
             eraseNoteButton = Button("Apagar seleção", RemoveNote);
             sidebar.Controls.Add(editLyricButton);
-            sidebar.Controls.Add(Button("Cifra e dinâmica", EditExpression));
+            sidebar.Controls.Add(Button("Expressão da nota", EditExpression));
             sidebar.Controls.Add(eraseNoteButton);
 
             var modes = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(12, 5, 0, 0),
@@ -625,7 +633,7 @@ namespace ValeScore
             if (!CommitLyric()) return;
             var note = SelectedNote();
             if (note == null) { Report("Selecione uma nota para editar cifra e dinâmica."); return; }
-            using (var dialog = new Form { Text = "Cifra e dinâmica", ClientSize = new Size(382, 168),
+            using (var dialog = new Form { Text = "Expressão da nota", ClientSize = new Size(382, 207),
                 StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false, MinimizeBox = false, Font = Font })
             {
@@ -636,23 +644,41 @@ namespace ValeScore
                 dynamic.Items.Add("Sem marca");
                 dynamic.Items.AddRange(Score.Dynamics);
                 dynamic.SelectedIndex = Array.IndexOf(Score.Dynamics, note.Dynamic) + 1;
-                var save = new Button { Text = "Aplicar", Bounds = new Rectangle(182, 114, 84, 30) };
-                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(276, 114, 85, 30) };
+                var articulation = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Articulação",
+                    Bounds = new Rectangle(160, 102, 201, 28) };
+                articulation.Items.Add("Sem articulação");
+                articulation.Items.AddRange(Articulations.Names);
+                articulation.SelectedIndex = Array.IndexOf(Articulations.XmlNames, note.Articulation) + 1;
+                var save = new Button { Text = "Aplicar", Bounds = new Rectangle(182, 155, 84, 30) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(276, 155, 85, 30) };
                 save.Click += delegate
                 {
                     string marking = dynamic.SelectedIndex == 0 ? null : Score.Dynamics[dynamic.SelectedIndex - 1];
-                    if (Change(() => score.SetExpression(position.Part, position.Staff, position.Tick, chord.Text, marking)))
+                    string selectedArticulation = articulation.SelectedIndex == 0 ? null : Articulations.XmlNames[articulation.SelectedIndex - 1];
+                    if (Change(() =>
+                    {
+                        score.SetExpression(position.Part, position.Staff, position.Tick, chord.Text, marking);
+                        score.SetArticulation(position.Part, position.Staff, position.Tick, selectedArticulation);
+                    }))
                         dialog.DialogResult = DialogResult.OK;
                     else MessageBox.Show(dialog, status.Text);
                 };
                 dialog.Controls.AddRange(new Control[] {
                     new Label { Text = "Cifra (ex. G7/B)", AutoSize = true, Location = new Point(16, 18) }, chord,
-                    new Label { Text = "Dinâmica", AutoSize = true, Location = new Point(16, 62) }, dynamic, save, cancel
+                    new Label { Text = "Dinâmica", AutoSize = true, Location = new Point(16, 62) }, dynamic,
+                    new Label { Text = "Articulação", AutoSize = true, Location = new Point(16, 104) }, articulation, save, cancel
                 });
                 dialog.AcceptButton = save;
                 dialog.CancelButton = cancel;
                 dialog.ShowDialog(this);
             }
+        }
+
+        private void ChangeArticulation(string mark)
+        {
+            if (!CommitLyric()) return;
+            if (SelectedNote() == null) { Report("Selecione uma nota para editar a articulação."); return; }
+            Change(() => score.SetArticulation(position.Part, position.Staff, position.Tick, mark));
         }
 
         private bool MoveToAdjacentNote(int direction)

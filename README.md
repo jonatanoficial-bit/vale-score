@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.8.0 · Prévia para Windows x64**
+**0.9.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.8.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.8.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.9.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.9.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -34,6 +34,11 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
 
+## Novidades da 0.9
+
+- Selecione uma nota e abra **Editar → Articulação da nota** ou **Ctrl+H**. Há staccato, staccatissimo, tenuto, acento e marcato.
+- Cada nota aceita uma articulação, preservada no projeto e no MusicXML/MXL. No MIDI e no WAV, as marcas ajustam a duração soante ou a força do ataque conforme a articulação.
+
 ## Novidades da 0.8
 
 - **Ctrl+H** abre **Cifra e dinâmica** na nota selecionada. Use cifras como Cmaj7, F#m7, Bbadd9 e G7/B. As cifras são exibidas acima da pauta e acompanham a transposição.
@@ -60,4 +65,4 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `5`. A versão 0.8 abre projetos dos esquemas 1 a 4 e grava no esquema 5. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+JSON UTF-8, versão de esquema `6`. A versão 0.9 abre projetos dos esquemas 1 a 5 e grava no esquema 6. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.

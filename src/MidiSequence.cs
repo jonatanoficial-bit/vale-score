@@ -232,11 +232,13 @@ namespace ValeScore
                         foreach (var attack in group.OrderBy(n => n.Item1.Tick))
                         {
                             var note = attack.Item1;
-                            if (note.Tick < end) { end = Math.Max(end, note.Tick + note.Length); continue; }
+                            int onset = note.Tick * 120;
+                            int release = onset + (int)Math.Round(note.Length * 120 * Articulations.SoundLength(note.Articulation));
+                            if (onset < end) { end = Math.Max(end, release); continue; }
                             if (start >= 0) AddPitch(data, channel, group.Key, start, end, velocity);
-                            start = note.Tick;
-                            end = note.Tick + note.Length;
-                            velocity = attack.Item2;
+                            start = onset;
+                            end = release;
+                            velocity = Articulations.Attack(note.Articulation, attack.Item2);
                         }
                         AddPitch(data, channel, group.Key, start, end, velocity);
                     }
@@ -247,8 +249,8 @@ namespace ValeScore
 
         private static void AddPitch(List<EventData> events, int channel, int pitch, int start, int end, int velocity)
         {
-            events.Add(new EventData { Tick = start * 120, Order = 1, Data = new[] { (byte)(0x90 | channel), (byte)pitch, (byte)velocity } });
-            events.Add(new EventData { Tick = end * 120, Data = new[] { (byte)(0x80 | channel), (byte)pitch, (byte)0 } });
+            events.Add(new EventData { Tick = start, Order = 1, Data = new[] { (byte)(0x90 | channel), (byte)pitch, (byte)velocity } });
+            events.Add(new EventData { Tick = end, Data = new[] { (byte)(0x80 | channel), (byte)pitch, (byte)0 } });
         }
 
         private static void WriteTrack(BinaryWriter output, IEnumerable<EventData> events, int end)
