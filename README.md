@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.12.0 · Prévia para Windows x64**
+**0.13.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.12.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.12.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.13.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.13.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
 
@@ -33,6 +33,12 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.13
+
+- **Ctrl+P** abre a prévia paginada. Escolha partitura completa ou instrumento selecionado, papel A4, Carta ou A3, retrato ou paisagem e margens de 5 a 35 mm. Cada ajuste repagina a prévia.
+- **Imprimir / PDF** usa o driver de impressão do Windows. Para gerar PDF, selecione **Microsoft Print to PDF** quando disponível.
+- **Páginas PNG** exporta um ZIP com todas as páginas numeradas do conteúdo escolhido. A configuração de publicação vale para a janela atual.
 
 ## Novidades da 0.12
 

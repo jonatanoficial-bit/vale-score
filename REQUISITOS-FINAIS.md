@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.12.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.13.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -24,7 +24,7 @@ Base da matriz: prévia 0.12.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | --- | --- | --- | --- |
 | 01.01 | Projetos com múltiplas peças ou movimentos (flows) | Pendente | |
 | 01.02 | Partituras gerais e partes instrumentais vinculadas | Pendente | |
-| 01.03 | Múltiplos layouts e configurações de impressão | Pendente | |
+| 01.03 | Múltiplos layouts e configurações de impressão | Parcial | Prévia configurável para partitura e parte. Layouts persistentes pendentes. |
 | 01.04 | Instrumentistas que alternam instrumentos durante a obra | Pendente | |
 | 01.05 | Conjuntos de câmara, coral, banda, big band e orquestra | Pendente | |
 | 01.06 | Templates de instrumentação e modelos personalizados | Pendente | |
@@ -228,8 +228,8 @@ Base da matriz: prévia 0.12.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 12.05 | Exportação de PDF para impressão | Parcial | |
 | 12.06 | Exportação de imagens e gráficos vetoriais | Parcial | [Teste de PNG por página](tests/Smoke.cs). Exportação vetorial pendente. |
 | 12.07 | Exportação de áudio | Parcial | |
-| 12.08 | Impressão de partitura e partes | Parcial | |
-| 12.09 | Definição de páginas, orientação e tamanho | Pendente | |
+| 12.08 | Impressão de partitura e partes | Parcial | Prévia paginada do todo ou da parte ativa. Validação em driver de impressão pendente. |
+| 12.09 | Definição de páginas, orientação e tamanho | Parcial | A4, Carta e A3, retrato e paisagem, margens ajustáveis. [Testes da prévia e do PNG](tests/Smoke.cs). |
 | 12.10 | Compatibilidade entre versões e formatos de projeto | Parcial | |
 | 12.11 | Compartilhamento de arquivos com outros editores | Parcial | |
 | 12.12 | Preparação de partituras para editoras e bibliotecas | Pendente | |

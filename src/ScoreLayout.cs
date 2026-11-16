@@ -17,6 +17,9 @@ namespace ValeScore
         private readonly int[] measureSystems;
         private readonly int rows, systemsPerPage, barTicks;
         private readonly int fifths;
+        private readonly int staffRight;
+        public int Width { get; private set; }
+        public int Height { get; private set; }
         public int MeasureLeft { get; private set; }
 
         public sealed class Measure
@@ -48,21 +51,29 @@ namespace ValeScore
             }
         }
 
-        public ScoreLayout(Score score)
+        public ScoreLayout(Score score) : this(score, ScorePage.PageWidth, ScorePage.PageHeight)
         {
+        }
+
+        internal ScoreLayout(Score score, int width, int height)
+        {
+            Width = width;
+            Height = height;
+            staffRight = width - (ScorePage.PageWidth - StaffRight);
             barTicks = score.BarTicks;
             fifths = score.Fifths;
             MeasureLeft = StaffLeft + (fifths == 0 ? 0 : 10 + Math.Abs(fifths) * 11);
             var lanes = score.Parts.SelectMany(p => p.Staves).ToArray();
             rows = lanes.Length;
-            systemsPerPage = Math.Max(1, 864 / (rows * StaffGap + SystemGap));
+            systemsPerPage = Math.Max(1, (height - (ScorePage.PageHeight - 864)) / (rows * StaffGap + SystemGap));
+            int barsPerSystem = Math.Max(1, (width - 170) / 203);
             measureSystems = new int[score.Bars];
             var measures = new List<Measure>();
             float used = 0;
             for (int bar = 0; bar < score.Bars; bar++)
             {
                 var measure = BuildMeasure(lanes, bar);
-                if (measures.Count > 0 && (measures.Count == 3 || used + measure.MinimumWidth > StaffRight - MeasureLeft))
+                if (measures.Count > 0 && (measures.Count == barsPerSystem || used + measure.MinimumWidth > staffRight - MeasureLeft))
                 {
                     AddSystem(measures, used, false);
                     measures.Clear();
@@ -190,7 +201,7 @@ namespace ValeScore
 
         private void AddSystem(List<Measure> measures, float used, bool last)
         {
-            float capacity = StaffRight - MeasureLeft;
+            float capacity = staffRight - MeasureLeft;
             float target = last && measures.Count == 1 ? Math.Min(capacity, Math.Max(228, used)) : capacity;
             float left = MeasureLeft;
             foreach (var measure in measures)

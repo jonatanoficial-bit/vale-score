@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
-using System.Drawing.Printing;
 using System.IO;
 using System.Linq;
 using System.Media;
@@ -187,6 +186,7 @@ namespace ValeScore
             AddExportItem("MusicXML  ·  .musicxml", ExportMusicXml);
             AddExportItem("MusicXML compactado  ·  .mxl", ExportMxl);
             AddExportItem("Instrumento selecionado  ·  MusicXML", ExportPart);
+            AddExportItem("Preparar parte selecionada…", () => OpenPublication(true));
             AddExportItem("Áudio  ·  .wav", ExportWave);
             AddExportItem("Página atual  ·  .png", ExportPng);
             AddExportItem("Imprimir ou salvar PDF", Print);
@@ -1509,24 +1509,18 @@ namespace ValeScore
 
         private void Print()
         {
+            OpenPublication(false);
+        }
+
+        private void OpenPublication(bool partOnly)
+        {
             if (!CommitLyric()) return;
             try
             {
-                using (var document = new PrintDocument { DocumentName = score.Title, OriginAtMargins = true })
-                using (var dialog = new PrintDialog { Document = document, UseEXDialog = true })
+                using (var dialog = new PublicationDialog(score, position.Part, partOnly))
                 {
-                    document.DefaultPageSettings.Margins = new Margins(30, 30, 30, 30);
-                    var layout = sheet.Engraving;
-                    int page = 0;
-                    document.PrintPage += (sender, e) =>
-                    {
-                        float scale = Math.Min(e.MarginBounds.Width / (float)ScorePage.PageWidth, e.MarginBounds.Height / (float)ScorePage.PageHeight);
-                        e.Graphics.TranslateTransform((e.MarginBounds.Width - ScorePage.PageWidth * scale) / 2, 0);
-                        e.Graphics.ScaleTransform(scale, scale);
-                        ScorePage.Draw(e.Graphics, score, layout, page++, null, -1, null);
-                        e.HasMorePages = page < layout.PageCount;
-                    };
-                    if (dialog.ShowDialog(this) == DialogResult.OK) { document.Print(); Report("Partitura enviada para impressão"); }
+                    dialog.ShowDialog(this);
+                    if (dialog.ResultStatus != null) Report(dialog.ResultStatus);
                 }
             }
             catch (Exception ex) { Error(ex); }

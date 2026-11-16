@@ -26,6 +26,40 @@ internal static class Smoke
     {
         var score = Score.New(true);
         score.Validate();
+        var publicationScore = Score.New(true);
+        publicationScore.Bars = 8;
+        publicationScore.AddPart("Piano");
+        publicationScore.AddPart("Piano");
+        publicationScore.AddPart("Piano");
+        int margin = Publication.Margin(12);
+        var fullPrint = new Publication(publicationScore, null, 0, false, margin);
+        var partPrint = new Publication(publicationScore, 0, 0, true, margin);
+        Assert(fullPrint.PageCount > partPrint.PageCount && partPrint.Title.EndsWith(" - Piano"),
+            "Prévia de parte recalcula as páginas e identifica o instrumento");
+        var physical = Publication.Paper(0, true);
+        var printArea = new RectangleF(margin, margin, physical.Width - 2 * margin, physical.Height - 2 * margin);
+        var fit = partPrint.Fit(printArea);
+        Assert(physical.Width == 1169 && physical.Height == 827 && partPrint.LayoutWidth > partPrint.LayoutHeight &&
+            fit.Left >= printArea.Left - .01f && fit.Right <= printArea.Right + .01f && fit.Bottom <= printArea.Bottom + .01f,
+            "Layout em paisagem respeita a proporção do papel e as margens");
+        using (var pngPages = new MemoryStream())
+        {
+            partPrint.ExportPngPages(pngPages);
+            pngPages.Position = 0;
+            using (var archive = new System.IO.Compression.ZipArchive(pngPages, System.IO.Compression.ZipArchiveMode.Read))
+            {
+                Assert(archive.Entries.Count == partPrint.PageCount && archive.Entries[0].Name == "pagina-01.png",
+                    "Exportação PNG inclui todas as páginas do instrumento");
+                using (var imageBytes = new MemoryStream())
+                {
+                    using (var entry = archive.Entries[0].Open()) entry.CopyTo(imageBytes);
+                    imageBytes.Position = 0;
+                    using (var image = new Bitmap(imageBytes))
+                        Assert(image.Width == physical.Width * 2 && image.Height == physical.Height * 2 && image.GetPixel(5, 5).R == 255,
+                            "Imagem exportada usa papel escolhido e fundo branco");
+                }
+            }
+        }
         var practice = Score.New(false);
         practice.SetMeter(6, 8);
         practice.SetKey(-2, false);
@@ -465,6 +499,19 @@ internal static class Smoke
         var measure = denseLayout.MeasureOf(0);
         Assert(measure.At(1) - measure.At(0) > 70 && denseLayout.PageOf(0) == 0, "O espaçamento da partitura se adapta às sílabas próximas");
         Application.EnableVisualStyles();
+        var previewType = typeof(Editor).Assembly.GetType("ValeScore.PublicationDialog", true);
+        using (var preview = (Form)Activator.CreateInstance(previewType, new object[] { publicationScore, 0, true }))
+        {
+            preview.Show();
+            Application.DoEvents();
+            Assert(preview.Visible && preview.Text == "Preparar publicação", "Janela de prévia paginada abre no Windows");
+            using (var image = new Bitmap(preview.Width, preview.Height))
+            {
+                preview.DrawToBitmap(image, new Rectangle(Point.Empty, preview.Size));
+                image.Save(Path.Combine(directory, "publicacao.png"));
+            }
+            preview.Close();
+        }
         using (var editor = new Editor())
         {
             editor.Show();

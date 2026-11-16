@@ -160,8 +160,8 @@ namespace ValeScore
             {
                 if (page == 0)
                 {
-                    g.DrawString(score.Title, title, ink, new RectangleF(44, 52, PageWidth - 88, 86), center);
-                    g.DrawString(score.Author, credits, ink, new RectangleF(48, 122, PageWidth - 96, 24), right);
+                    g.DrawString(score.Title, title, ink, new RectangleF(44, 52, layout.Width - 88, 86), center);
+                    g.DrawString(score.Author, credits, ink, new RectangleF(48, 122, layout.Width - 96, 24), right);
                     g.DrawString("Andamento  " + score.Tempo + " bpm", small, ink, 47, 145);
                 }
                 else g.DrawString(score.Title, credits, ink, 47, 113);
@@ -262,7 +262,7 @@ namespace ValeScore
                     }
                     system++;
                 }
-                g.DrawString((page + 1).ToString(), small, ink, new RectangleF(0, PageHeight - 38, PageWidth, 24), center);
+                g.DrawString((page + 1).ToString(), small, ink, new RectangleF(0, layout.Height - 38, layout.Width, 24), center);
             }
         }
 
