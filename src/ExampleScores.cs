@@ -10,7 +10,7 @@ namespace ValeScore
 
         public static readonly ExampleScore[] Library = {
             new ExampleScore("Prelúdio em dó", "Piano · letra e pauta dupla", () => Score.New(true)),
-            new ExampleScore("Valsa da tarde", "Piano · 3/4, acordes e dinâmica", Waltz),
+            new ExampleScore("Valsa da tarde", "Piano · 3/4, acordes e duas vozes", Waltz),
             new ExampleScore("Canção ao entardecer", "Melodia · cifras e articulações", LeadSheet)
         };
 
@@ -32,6 +32,9 @@ namespace ValeScore
             score.AddChordNote(0, 0, 0, 4, 30, 0);
             score.AddChordNote(0, 0, 44, 4, 30, 0);
             score.AddChordNote(0, 0, 44, 4, 32, 0);
+            score.Put(0, 0, 12, 12, 28, 0, voice: 1);
+            score.Put(0, 0, 24, 8, 29, 0, voice: 1);
+            score.PutRest(0, 0, 32, 4, voice: 1);
             score.SetExpression(0, 0, 0, null, "mp");
             score.SetExpression(0, 0, 24, null, "f");
             return score;

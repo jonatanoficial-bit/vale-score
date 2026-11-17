@@ -31,6 +31,89 @@ internal static class Smoke
         catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     }
 
+    private static void VoiceChecks(string directory)
+    {
+        var legacy = Score.New(false);
+        legacy.Version = 9;
+        legacy.AddChordNote(0, 0, 0, 4, 28, 0);
+        legacy.AddChordNote(0, 0, 0, 4, 30, 0);
+        var migrated = Score.Restore(legacy.Snapshot());
+        Assert(migrated.Version == Score.CurrentVersion && migrated.Parts[0].Staves[0].Count == 2 &&
+            migrated.Parts[0].Staves[0].All(n => n.Voice == 0), "Projetos 0.16 mantêm os acordes na primeira voz");
+        var score = Score.New(false);
+        score.Put(0, 0, 0, 4, 36, 0);
+        score.Put(0, 0, 4, 4, 37, 0);
+        score.Put(0, 0, 0, 8, 34, 0, voice: 1);
+        score.AddChordNote(0, 0, 0, 8, 32, 0, voice: 1);
+        score.PutRest(0, 0, 8, 8, voice: 1);
+        score.Put(0, 1, 0, 16, 22, 0);
+        var lane = score.Parts[0].Staves[0];
+        var lower = lane.First(n => n.Voice == 1);
+        score.SetExpression(0, 0, 0, null, "p", lower.Id);
+        bool blocked = false;
+        try { score.Put(0, 0, 2, 4, 35, 0, voice: 1); }
+        catch (InvalidOperationException) { blocked = true; }
+        Assert(blocked && lane.Count == 5 && lane.Count(n => n.Tick == 0 && n.Length == 8) == 2,
+            "Vozes sobrepõem durações e rejeitam conflito dentro da mesma voz");
+        score.EditNote(0, 0, lower, 6, 34, 0);
+        Assert(lane.Count(n => n.Voice == 1 && n.Length == 6) == 2 && lane[0].Length == 4,
+            "Editar a duração do acorde da segunda voz preserva a primeira");
+        string path = Path.Combine(directory, "duas-vozes.valescore");
+        score.Save(path);
+        Assert(Score.Open(path).Snapshot().SequenceEqual(score.Snapshot()), "Projeto salva e reabre duas vozes independentes");
+        var bars = Score.Restore(score.Snapshot());
+        bars.PasteBar(1, bars.CopyBar(0));
+        bars.DuplicateBar(1);
+        Assert(bars.Parts[0].Staves[0].Count(n => n.Voice == 1 && n.Tick >= 16 && n.Tick < 48) == 6,
+            "Copiar e duplicar compassos preserva a voz de cada figura");
+        using (var sheet = new ScorePage())
+        {
+            sheet.LoadScore(score);
+            float x = sheet.Engraving.MeasureOf(0).At(0);
+            int y = sheet.Engraving.StaffTop(0, 0);
+            var highHit = sheet.Hit(x - 7, y + 10);
+            var lowHit = sheet.Hit(x + 7, y + 20);
+            Assert(highHit != null && lowHit != null && highHit.HitNote && lowHit.HitNote && highHit.Voice == 0 && lowHit.Voice == 1,
+                "Clique distingue as cabeças das duas vozes no mesmo instante");
+        }
+        var melody = Score.Restore(score.Snapshot());
+        melody.Parts[0].Staves[0].RemoveAll(n => n.Voice == 1);
+        using (var combined = Output.Wave(score, false))
+        using (var alone = Output.Wave(melody, false))
+            Assert(combined.Length == alone.Length && !combined.ToArray().SequenceEqual(alone.ToArray()),
+                "O som interno e o WAV incluem o acompanhamento da segunda voz");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(score, xml);
+            xml.Position = 0;
+            var measure = XDocument.Load(xml).Descendants("measure").First();
+            Assert(measure.Elements("backup").Count() == 2 &&
+                measure.Elements("note").Any(n => (string)n.Element("voice") == "3" && (int)n.Element("duration") == 6 &&
+                    (string)n.Element("stem") == "down") &&
+                measure.Elements("note").Any(n => (string)n.Element("voice") == "1" && (string)n.Element("stem") == "up"),
+                "MusicXML usa recuos e identificadores separados para duas vozes e pauta inferior");
+            xml.Position = 0;
+            var parsed = MusicXmlImport.Read(xml, "Duas vozes");
+            var restored = parsed.Project.Parts[0].Staves[0];
+            Assert(parsed.Omitted == 0 && restored.Count(n => !n.IsRest && n.Voice == 1 && n.Length == 6) == 2 &&
+                restored.Any(n => n.Voice == 1 && n.Tick == 8 && n.IsRest) &&
+                restored.Any(n => n.Voice == 1 && n.Dynamic == "p") && restored.Any(n => n.Voice == 0 && n.Tick == 4 && !n.IsRest),
+                "Reimportação MusicXML mantém duração, pausa e dinâmica da segunda voz");
+        }
+        using (var file = new MemoryStream())
+        {
+            MidiSequence.Export(score, file);
+            file.Position = 0;
+            var sequence = MidiSequence.Read(file);
+            Assert(sequence.Events.Any(n => (n.Status & 240) == 0x80 && n.Data1 == lower.Midi && n.Tick == 720),
+                "MIDI mantém o fim da nota longa da segunda voz");
+            var converted = MidiImport.Convert(sequence, "Vozes sobrepostas");
+            Assert(converted.Skipped == 0 && converted.Project.Parts[0].Staves[0].Any(n => n.Voice == 1) &&
+                converted.Project.Parts[0].Staves[0].Any(n => n.Tick == 0 && n.Midi == lower.Midi && n.Length == 6),
+                "Importação MIDI usa a segunda voz para sobreposições que exigem ritmos distintos");
+        }
+    }
+
     private static void ChordChecks(string directory)
     {
         var score = Score.New(false);
@@ -95,6 +178,7 @@ internal static class Smoke
 
     private static void Run(string directory)
     {
+        VoiceChecks(directory);
         ChordChecks(directory);
         var score = Score.New(true);
         score.Validate();
@@ -812,6 +896,17 @@ internal static class Smoke
             key(Keys.D2);
             Assert(sheet.Selection.NoteId != Guid.Empty && sheet.Music.Parts[0].Staves[0].Count == 3 &&
                 sheet.Music.Parts[0].Staves[0].All(n => n.Length == 8), "Teclado seleciona no acorde e muda a duração de todas as alturas");
+            type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(false), null });
+            click(sheet.OnSheet(sheet.Selection, 30));
+            key(Keys.Shift | Keys.V);
+            key(Keys.D2);
+            click(sheet.OnSheet(sheet.Selection, 50));
+            Assert(sheet.Music.Parts[0].Staves[0].Count(n => n.Tick == 0) == 2 && sheet.Music.Parts[0].Staves[0]
+                .Any(n => n.Voice == 1 && n.Length == 8), "Editor alterna voz e insere acompanhamento sem substituir a melodia");
+            key(Keys.V);
+            key(Keys.Delete);
+            Assert(sheet.Music.Parts[0].Staves[0].Count == 1 && first().Voice == 0,
+                "Apagar na segunda voz preserva a primeira");
             type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(true), null });
             editor.Close();
         }

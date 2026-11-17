@@ -16,7 +16,6 @@ namespace ValeScore
         private readonly List<Measure[]> systems = new List<Measure[]>();
         private readonly int[] measureSystems;
         private readonly int rows, systemsPerPage, barTicks;
-        private readonly int fifths;
         private readonly int staffRight;
         public int Width { get; private set; }
         public int Height { get; private set; }
@@ -61,7 +60,7 @@ namespace ValeScore
             Height = height;
             staffRight = width - (ScorePage.PageWidth - StaffRight);
             barTicks = score.BarTicks;
-            fifths = score.Fifths;
+            int fifths = score.Fifths;
             MeasureLeft = StaffLeft + (fifths == 0 ? 0 : 10 + Math.Abs(fifths) * 11);
             var lanes = score.Parts.SelectMany(p => p.Staves).ToArray();
             rows = lanes.Length;
@@ -72,7 +71,7 @@ namespace ValeScore
             float used = 0;
             for (int bar = 0; bar < score.Bars; bar++)
             {
-                var measure = BuildMeasure(lanes, bar);
+                var measure = BuildMeasure(score, lanes, bar);
                 if (measures.Count > 0 && (measures.Count == barsPerSystem || used + measure.MinimumWidth > staffRight - MeasureLeft))
                 {
                     AddSystem(measures, used, false);
@@ -114,7 +113,7 @@ namespace ValeScore
         internal static readonly Font ChordFont = new Font("Segoe UI Semibold", 14, FontStyle.Regular, GraphicsUnit.Pixel);
         internal static readonly Font DynamicFont = new Font("Georgia", 14, FontStyle.Bold | FontStyle.Italic, GraphicsUnit.Pixel);
 
-        private Measure BuildMeasure(List<Note>[] lanes, int bar)
+        private Measure BuildMeasure(Score score, List<Note>[] lanes, int bar)
         {
             int start = bar * barTicks;
             var halfWidths = new float[barTicks];
@@ -128,17 +127,20 @@ namespace ValeScore
                 float previousWidth = 0;
                 int previousChord = -1, previousDynamic = -1;
                 float previousChordWidth = 0, previousDynamicWidth = 0;
-                var accidentals = new Dictionary<int, int>();
-                foreach (var onset in lane.Where(n => n.Tick >= start && n.Tick < start + barTicks).GroupBy(n => n.Tick))
+                var notes = lane.Where(n => n.Tick >= start && n.Tick < start + barTicks).ToArray();
+                var marks = score.PrintedAccidentals(notes);
+                foreach (var onset in notes.Where(n => !n.IsRest).GroupBy(n => n.Tick))
                 {
                     if (onset.Count() < 2) continue;
                     int unit = onset.Key - start;
                     int[] steps = onset.Select(n => n.Step).OrderBy(step => step).ToArray();
-                    if (!steps.Zip(steps.Skip(1), (a, b) => b - a).Contains(1)) continue;
-                    chordHeads[unit] = 11;
-                    if (unit + 1 < barTicks) chordHeads[unit + 1] = 11;
+                    bool shared = onset.Select(n => n.Voice).Distinct().Count() > 1;
+                    bool adjacent = steps.Zip(steps.Skip(1), (a, b) => b - a).Contains(1);
+                    int extra = (shared ? 8 : 0) + (adjacent ? 11 : 0);
+                    chordHeads[unit] = Math.Max(chordHeads[unit], extra);
+                    if (unit + 1 < barTicks) chordHeads[unit + 1] = Math.Max(chordHeads[unit + 1], extra);
                 }
-                foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + barTicks))
+                foreach (var note in notes)
                 {
                     int origin = note.Tick - start;
                     int dotCount = Score.DotCount(note.Length);
@@ -146,10 +148,8 @@ namespace ValeScore
                         dots[origin + 1] = Math.Max(dots[origin + 1], dotCount);
                     if (note.IsRest) continue;
                     int unit = note.Tick - start;
-                    int alter = KeySignature.Prior(fifths, accidentals, note.Step);
-                    if (note.Alter != alter || note.Courtesy)
+                    if (marks.Contains(note.Id))
                         alterations[unit] = Math.Max(alterations[unit], note.Courtesy || Math.Abs(note.Alter) == 2 ? 35 : 23);
-                    accidentals[note.Step] = note.Alter;
                     ReserveMark(note.Chord, ChordFont, unit, halfWidths, links, ref previousChord, ref previousChordWidth);
                     ReserveMark(note.Dynamic, DynamicFont, unit, halfWidths, links, ref previousDynamic, ref previousDynamicWidth);
                     if (note.Lyric == null) continue;

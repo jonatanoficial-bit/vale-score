@@ -104,13 +104,14 @@ namespace ValeScore
         private static bool Place(Score project, List<int> parts, int start, int end, int step, int alter, MidiImport result)
         {
             int[] order = step >= 28 ? new[] { 0, 1 } : new[] { 1, 0 };
+            for (int voice = 0; voice < Score.VoicesPerStaff; voice++)
             foreach (int part in parts)
             foreach (int staff in order)
             {
                 if (!FitsStaff(staff, step)) continue;
                 var lane = project.Parts[part].Staves[staff];
-                if (!CanPlace(project, lane, start, end, step, alter)) continue;
-                Write(project, part, staff, start, end, step, alter, result);
+                if (!CanPlace(project, lane, start, end, step, alter, voice)) continue;
+                Write(project, part, staff, start, end, step, alter, result, voice);
                 return true;
             }
             if (project.Parts.Count >= 4) return false;
@@ -128,14 +129,15 @@ namespace ValeScore
             return step >= min && step <= min + 18;
         }
 
-        private static bool CanPlace(Score score, List<Note> lane, int start, int end, int step, int alter)
+        private static bool CanPlace(Score score, List<Note> lane, int start, int end, int step, int alter, int voice)
         {
-            if (lane.Count == 0 || lane[lane.Count - 1].Tick + lane[lane.Count - 1].Length <= start) return true;
+            var last = lane.FindLast(n => n.Voice == voice);
+            if (last == null || last.Tick + last.Length <= start) return true;
             var note = new Note { Step = step, Alter = alter };
             for (int tick = start; tick < end;)
             {
                 int length = SegmentLength(score, tick, end);
-                var overlaps = lane.Where(n => n.Tick < tick + length && n.Tick + n.Length > tick).ToArray();
+                var overlaps = lane.Where(n => n.Voice == voice && n.Tick < tick + length && n.Tick + n.Length > tick).ToArray();
                 if (overlaps.Length >= Score.MaxChordNotes ||
                     overlaps.Any(n => n.IsRest || n.Tick != tick || n.Length != length || n.Step == step || n.Midi == note.Midi))
                     return false;
@@ -147,16 +149,18 @@ namespace ValeScore
         private static int SegmentLength(Score score, int tick, int end)
         {
             int local = tick % score.BarTicks;
-            return Score.RestLength(local, Math.Min(end - tick, score.BarTicks - local));
+            int remaining = Math.Min(end - tick, score.BarTicks - local);
+            if (Score.IsSupportedDuration(remaining) && local % Score.BaseDuration(remaining) == 0) return remaining;
+            return Score.RestLength(local, remaining);
         }
 
-        private static void Write(Score score, int part, int staff, int start, int end, int step, int alter, MidiImport result)
+        private static void Write(Score score, int part, int staff, int start, int end, int step, int alter, MidiImport result, int voice = 0)
         {
             int count = 0;
             for (int tick = start; tick < end; count++)
             {
                 int length = SegmentLength(score, tick, end);
-                score.AddChordNote(part, staff, tick, length, step, alter);
+                score.AddChordNote(part, staff, tick, length, step, alter, voice);
                 tick += length;
             }
             if (count > 1) result.Split++;

@@ -153,7 +153,7 @@ namespace ValeScore
             result.Report = result.Notes + " notas importadas em " + parts.Length + " parte(s)." + Environment.NewLine +
                 result.Omitted + " figura(s) ou letra(s) omitidas por incompatibilidade." + Environment.NewLine +
                 result.Normalized + " ajuste(s) de grade ou notação." + Environment.NewLine +
-                "Pode haver perdas em acordes com durações diferentes, vozes sobrepostas, timbres, mudanças de andamento, expressões e layout. " +
+                "Pode haver perdas acima de duas vozes por pauta, em acordes com durações diferentes, timbres, mudanças de andamento, expressões e layout. " +
                 "As pautas são exibidas em clave de sol ou no par sol/fá.";
             return result;
         }
@@ -162,15 +162,16 @@ namespace ValeScore
         {
             int divisions = 1, bar = 0;
             int barTicks = result.Project.BarTicks;
+            var voices = Enumerable.Range(0, staves).Select(i => new List<string>()).ToArray();
             foreach (var measure in source.Elements("measure"))
             {
                 double cursor = 0, previous = 0;
-                int[] ends = new int[staves];
+                var ends = new int[staves, Score.VoicesPerStaff];
                 Note chordBase = null;
                 int baseStaff = -1;
                 string baseVoice = null;
                 var chords = new Dictionary<int, string>();
-                var dynamics = new Dictionary<int, string>();
+                var dynamics = new Dictionary<Tuple<int, int, string>, string>();
                 foreach (var child in measure.Elements())
                 {
                     string kind = child.Name.LocalName;
@@ -198,10 +199,18 @@ namespace ValeScore
                             result.Omitted++;
                         else
                         {
-                            var target = kind == "harmony" ? chords : dynamics;
                             int key = (staffNumber - 1) * barTicks + tickOfMark;
-                            if (target.ContainsKey(key)) result.Omitted++;
-                            target[key] = text;
+                            if (kind == "harmony")
+                            {
+                                if (chords.ContainsKey(key)) result.Omitted++;
+                                chords[key] = text;
+                            }
+                            else
+                            {
+                                var markKey = Tuple.Create(staffNumber - 1, tickOfMark, (string)child.Element("voice"));
+                                if (dynamics.ContainsKey(markKey)) result.Omitted++;
+                                dynamics[markKey] = text;
+                            }
                         }
                         continue;
                     }
@@ -229,7 +238,7 @@ namespace ValeScore
                     int tick = (int)Math.Round(start, MidpointRounding.AwayFromZero);
                     int end = Math.Max(tick + 1, (int)Math.Round(start + length, MidpointRounding.AwayFromZero));
                     int at = bar * barTicks + tick;
-                    string voice = (string)child.Element("voice");
+                    string voice = (string)child.Element("voice") ?? (chord ? baseVoice : null) ?? "1";
                     if (chord && (chordBase == null || baseStaff != staff || chordBase.Tick != at ||
                         baseVoice != voice || child.Element("rest") != null ||
                         chordBase.Length != end - tick))
@@ -237,17 +246,24 @@ namespace ValeScore
                         result.Omitted++;
                         continue;
                     }
+                    int voiceIndex = voices[staff].IndexOf(voice);
+                    if (voiceIndex < 0)
+                    {
+                        if (voices[staff].Count == Score.VoicesPerStaff) { result.Omitted++; continue; }
+                        voiceIndex = voices[staff].Count;
+                        voices[staff].Add(voice);
+                    }
                     if (start == 0 && end == barTicks && child.Element("rest") != null && (string)child.Element("rest").Attribute("measure") == "yes")
                     {
-                        ends[staff] = end;
+                        ends[staff, voiceIndex] = end;
                         continue;
                     }
-                    if (!Score.IsSupportedDuration(end - tick) || end > barTicks || (!chord && tick < ends[staff]))
+                    if (!Score.IsSupportedDuration(end - tick) || end > barTicks || (!chord && tick < ends[staff, voiceIndex]))
                     {
                         result.Omitted++;
                         continue;
                     }
-                    if (child.Element("rest") != null) result.Project.PutRest(part, staff, at, end - tick);
+                    if (child.Element("rest") != null) result.Project.PutRest(part, staff, at, end - tick, voiceIndex);
                     else
                     {
                         var pitch = child.Element("pitch");
@@ -263,14 +279,14 @@ namespace ValeScore
                         if (chord)
                         {
                             int count = lane.Count;
-                            try { added = result.Project.AddChordNote(part, staff, at, end - tick, step, alteration); }
+                            try { added = result.Project.AddChordNote(part, staff, at, end - tick, step, alteration, voiceIndex); }
                             catch (InvalidOperationException) { result.Omitted++; continue; }
                             if (lane.Count == count) { result.Omitted++; continue; }
                         }
                         else
                         {
-                            result.Project.Put(part, staff, at, end - tick, step, alteration);
-                            added = chordBase = lane.Find(n => n.Tick == at);
+                            result.Project.Put(part, staff, at, end - tick, step, alteration, voiceIndex);
+                            added = chordBase = lane.Find(n => n.Tick == at && n.Voice == voiceIndex);
                             baseStaff = staff;
                             baseVoice = voice;
                         }
@@ -291,20 +307,27 @@ namespace ValeScore
                             catch (InvalidOperationException) { result.Omitted++; }
                         }
                     }
-                    if (!chord) ends[staff] = end;
+                    if (!chord) ends[staff, voiceIndex] = end;
                     if (Math.Abs(tick - start) > .00001 || Math.Abs(end - start - length) > .00001) result.Normalized++;
                 }
                 var usedChords = new HashSet<int>();
-                var usedDynamics = new HashSet<int>();
+                var usedDynamics = new HashSet<Tuple<int, int, string>>();
                 for (int staff = 0; staff < staves; staff++)
-                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / barTicks == bar).GroupBy(n => n.Tick).Select(group => group.First()))
+                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / barTicks == bar).GroupBy(n => new { n.Tick, n.Voice }).Select(group => group.First()).OrderBy(n => n.Voice))
                 {
                     int key = staff * barTicks + note.Tick % barTicks;
                     string chord, marking;
-                    if (chords.TryGetValue(key, out chord)) usedChords.Add(key);
-                    if (dynamics.TryGetValue(key, out marking)) usedDynamics.Add(key);
+                    if (!chords.TryGetValue(key, out chord) || !usedChords.Add(key)) chord = null;
+                    int local = note.Tick % barTicks;
+                    var markKey = Tuple.Create(staff, local, voices[staff][note.Voice]);
+                    if (!dynamics.TryGetValue(markKey, out marking))
+                    {
+                        markKey = Tuple.Create(staff, local, (string)null);
+                        dynamics.TryGetValue(markKey, out marking);
+                    }
+                    if (marking != null && !usedDynamics.Add(markKey)) marking = null;
                     if (chord != null || marking != null)
-                        result.Project.SetExpression(part, staff, note.Tick, chord, marking);
+                        result.Project.SetExpression(part, staff, note.Tick, chord, marking, note.Id);
                 }
                 result.Omitted += chords.Count - usedChords.Count + dynamics.Count - usedDynamics.Count;
                 bar++;

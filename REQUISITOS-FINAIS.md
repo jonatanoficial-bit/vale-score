@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.16.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.17.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -41,7 +41,7 @@ Base da matriz: prévia 0.16.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 02.01 | Inserção de notas por teclado, mouse e controlador MIDI | Parcial | |
 | 02.02 | Entrada passo a passo e gravação MIDI em tempo real | Parcial | |
 | 02.03 | Entrada de acordes e intervalos | Parcial | [Suíte Windows](tests/Smoke.cs). Até oito alturas na mesma posição rítmica com duração comum e seleção individual. |
-| 02.04 | Inserção de notas em diferentes vozes | Pendente | |
+| 02.04 | Inserção de notas em diferentes vozes | Parcial | [Suíte Windows](tests/Smoke.cs). Duas vozes independentes por pauta, com seleção e edição. |
 | 02.05 | Modo de inserção que desloca conteúdo rítmico | Pendente | |
 | 02.06 | Seleção, filtros avançados e edição em massa | Pendente | |
 | 02.07 | Copiar, colar, duplicar e colagem múltipla | Parcial | [Teste de cópia e colagem de um compasso](tests/Smoke.cs). Seleção de trechos e colagem múltipla pendentes. |
@@ -221,9 +221,9 @@ Base da matriz: prévia 0.16.0. A [suíte automatizada](tests/Smoke.cs) verifica
 
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
-| 12.01 | Importação de MusicXML | Parcial | [Testes MusicXML e MXL](tests/Smoke.cs). Seis fórmulas fixas, até quatro partes, duas pautas e uma voz com acordes de duração comum por pauta. |
+| 12.01 | Importação de MusicXML | Parcial | [Testes MusicXML e MXL](tests/Smoke.cs). Seis fórmulas fixas, até quatro partes, duas pautas e duas vozes independentes por pauta. |
 | 12.02 | Exportação de MusicXML | Parcial | |
-| 12.03 | Importação de MIDI | Parcial | [Suíte Windows](tests/Smoke.cs). Conversão em grade fixa com acordes de duração comum. Métrica variável, percussão e vozes independentes pendentes. |
+| 12.03 | Importação de MIDI | Parcial | [Suíte Windows](tests/Smoke.cs). Conversão em grade fixa com acordes de duração comum. Segunda voz para sobreposições compatíveis. Métrica variável e percussão pendentes. |
 | 12.04 | Exportação de MIDI | Parcial | |
 | 12.05 | Exportação de PDF para impressão | Parcial | |
 | 12.06 | Exportação de imagens e gráficos vetoriais | Parcial | [Teste de PNG por página](tests/Smoke.cs). Exportação vetorial pendente. |
