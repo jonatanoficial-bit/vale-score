@@ -109,7 +109,7 @@ namespace ValeScore
             {
                 if (!FitsStaff(staff, step)) continue;
                 var lane = project.Parts[part].Staves[staff];
-                if (lane.Count != 0 && lane[lane.Count - 1].Tick + lane[lane.Count - 1].Length > start) continue;
+                if (!CanPlace(project, lane, start, end, step, alter)) continue;
                 Write(project, part, staff, start, end, step, alter, result);
                 return true;
             }
@@ -128,14 +128,35 @@ namespace ValeScore
             return step >= min && step <= min + 18;
         }
 
+        private static bool CanPlace(Score score, List<Note> lane, int start, int end, int step, int alter)
+        {
+            if (lane.Count == 0 || lane[lane.Count - 1].Tick + lane[lane.Count - 1].Length <= start) return true;
+            var note = new Note { Step = step, Alter = alter };
+            for (int tick = start; tick < end;)
+            {
+                int length = SegmentLength(score, tick, end);
+                var overlaps = lane.Where(n => n.Tick < tick + length && n.Tick + n.Length > tick).ToArray();
+                if (overlaps.Length >= Score.MaxChordNotes ||
+                    overlaps.Any(n => n.IsRest || n.Tick != tick || n.Length != length || n.Step == step || n.Midi == note.Midi))
+                    return false;
+                tick += length;
+            }
+            return true;
+        }
+
+        private static int SegmentLength(Score score, int tick, int end)
+        {
+            int local = tick % score.BarTicks;
+            return Score.RestLength(local, Math.Min(end - tick, score.BarTicks - local));
+        }
+
         private static void Write(Score score, int part, int staff, int start, int end, int step, int alter, MidiImport result)
         {
             int count = 0;
             for (int tick = start; tick < end; count++)
             {
-                int available = Math.Min(end - tick, score.BarTicks - tick % score.BarTicks);
-                int length = Score.RestLength(tick % score.BarTicks, available);
-                score.Put(part, staff, tick, length, step, alter);
+                int length = SegmentLength(score, tick, end);
+                score.AddChordNote(part, staff, tick, length, step, alter);
                 tick += length;
             }
             if (count > 1) result.Split++;

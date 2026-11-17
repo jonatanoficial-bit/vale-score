@@ -153,7 +153,7 @@ namespace ValeScore
             result.Report = result.Notes + " notas importadas em " + parts.Length + " parte(s)." + Environment.NewLine +
                 result.Omitted + " figura(s) ou letra(s) omitidas por incompatibilidade." + Environment.NewLine +
                 result.Normalized + " ajuste(s) de grade ou notação." + Environment.NewLine +
-                "Pode haver perdas de acordes e vozes sobrepostas, timbres, mudanças de andamento, expressões e layout. " +
+                "Pode haver perdas em acordes com durações diferentes, vozes sobrepostas, timbres, mudanças de andamento, expressões e layout. " +
                 "As pautas são exibidas em clave de sol ou no par sol/fá.";
             return result;
         }
@@ -166,6 +166,9 @@ namespace ValeScore
             {
                 double cursor = 0, previous = 0;
                 int[] ends = new int[staves];
+                Note chordBase = null;
+                int baseStaff = -1;
+                string baseVoice = null;
                 var chords = new Dictionary<int, string>();
                 var dynamics = new Dictionary<int, string>();
                 foreach (var child in measure.Elements())
@@ -210,11 +213,12 @@ namespace ValeScore
                     double start = chord ? previous : cursor;
                     if (kind == "backup")
                     {
+                        chordBase = null;
                         cursor -= length;
                         if (cursor < -.00001) throw new InvalidDataException("O recuo MusicXML ultrapassa o início do compasso.");
                         continue;
                     }
-                    if (!chord) { previous = cursor; cursor += length; }
+                    if (!chord) { chordBase = null; previous = cursor; cursor += length; }
                     if (kind == "forward") continue;
                     int staff = Integer(child.Element("staff"), 1) - 1;
                     if (staff < 0 || staff >= staves || length <= 0 || start < -.00001 || start >= barTicks || start + length > barTicks + .00001)
@@ -224,17 +228,25 @@ namespace ValeScore
                     }
                     int tick = (int)Math.Round(start, MidpointRounding.AwayFromZero);
                     int end = Math.Max(tick + 1, (int)Math.Round(start + length, MidpointRounding.AwayFromZero));
+                    int at = bar * barTicks + tick;
+                    string voice = (string)child.Element("voice");
+                    if (chord && (chordBase == null || baseStaff != staff || chordBase.Tick != at ||
+                        baseVoice != voice || child.Element("rest") != null ||
+                        chordBase.Length != end - tick))
+                    {
+                        result.Omitted++;
+                        continue;
+                    }
                     if (start == 0 && end == barTicks && child.Element("rest") != null && (string)child.Element("rest").Attribute("measure") == "yes")
                     {
                         ends[staff] = end;
                         continue;
                     }
-                    if (!Score.IsSupportedDuration(end - tick) || end > barTicks || tick < ends[staff])
+                    if (!Score.IsSupportedDuration(end - tick) || end > barTicks || (!chord && tick < ends[staff]))
                     {
                         result.Omitted++;
                         continue;
                     }
-                    int at = bar * barTicks + tick;
                     if (child.Element("rest") != null) result.Project.PutRest(part, staff, at, end - tick);
                     else
                     {
@@ -246,31 +258,46 @@ namespace ValeScore
                         int min = staff == 0 ? 25 : 13;
                         if (degree < 0 || octave < 0 || octave > 9 || step < min || step > min + 18 ||
                             alteration < -2 || alteration > 2) { result.Omitted++; continue; }
-                        result.Project.Put(part, staff, at, end - tick, step, alteration);
+                        Note added;
+                        var lane = result.Project.Parts[part].Staves[staff];
+                        if (chord)
+                        {
+                            int count = lane.Count;
+                            try { added = result.Project.AddChordNote(part, staff, at, end - tick, step, alteration); }
+                            catch (InvalidOperationException) { result.Omitted++; continue; }
+                            if (lane.Count == count) { result.Omitted++; continue; }
+                        }
+                        else
+                        {
+                            result.Project.Put(part, staff, at, end - tick, step, alteration);
+                            added = chordBase = lane.Find(n => n.Tick == at);
+                            baseStaff = staff;
+                            baseVoice = voice;
+                        }
                         var accidental = child.Element("accidental");
                         if (accidental != null && ((string)accidental.Attribute("cautionary") == "yes" ||
                             (string)accidental.Attribute("parentheses") == "yes"))
-                            result.Project.SetCourtesy(part, staff, at, true);
+                            result.Project.SetCourtesy(part, staff, at, true, added.Id);
                         result.Notes++;
                         var marksOnNote = child.Elements("notations").Elements("articulations").Elements().ToArray();
                         var articulation = marksOnNote.FirstOrDefault(e => Articulations.XmlNames.Contains(e.Name.LocalName));
-                        if (articulation != null) result.Project.SetArticulation(part, staff, at, articulation.Name.LocalName);
+                        if (articulation != null) result.Project.SetArticulation(part, staff, at, articulation.Name.LocalName, added.Id);
                         result.Omitted += marksOnNote.Length - (articulation == null ? 0 : 1);
                         var lyric = child.Elements("lyric").FirstOrDefault();
                         if (lyric != null)
                         {
                             string syllabic = (string)lyric.Element("syllabic");
-                            try { result.Project.SetLyric(part, staff, at, (string)lyric.Element("text"), syllabic == "begin" || syllabic == "middle"); }
+                            try { result.Project.SetLyric(part, staff, at, (string)lyric.Element("text"), syllabic == "begin" || syllabic == "middle", added.Id); }
                             catch (InvalidOperationException) { result.Omitted++; }
                         }
                     }
-                    ends[staff] = end;
+                    if (!chord) ends[staff] = end;
                     if (Math.Abs(tick - start) > .00001 || Math.Abs(end - start - length) > .00001) result.Normalized++;
                 }
                 var usedChords = new HashSet<int>();
                 var usedDynamics = new HashSet<int>();
                 for (int staff = 0; staff < staves; staff++)
-                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / barTicks == bar))
+                foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / barTicks == bar).GroupBy(n => n.Tick).Select(group => group.First()))
                 {
                     int key = staff * barTicks + note.Tick % barTicks;
                     string chord, marking;

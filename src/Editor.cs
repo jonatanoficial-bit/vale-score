@@ -20,7 +20,7 @@ namespace ValeScore
         private static readonly Color Mint = Color.FromArgb(155, 218, 201);
         private static readonly string[] Figures = { "Semibreve", "Mínima", "Semínima", "Colcheia", "Semicolcheia" };
         private static readonly Keys[] PitchKeys = { Keys.A, Keys.S, Keys.D, Keys.F, Keys.G, Keys.H, Keys.J };
-        private enum EditMode { Select, Write, Rest, Erase, Lyrics }
+        private enum EditMode { Select, Write, Rest, Erase, Lyrics, Chord }
         private readonly ScorePage sheet = new ScorePage();
         private readonly Panel surface = new ScoreDesk { AutoScroll = true, Dock = DockStyle.Fill };
         private readonly FlowLayoutPanel tools = new FlowLayoutPanel();
@@ -122,6 +122,7 @@ namespace ValeScore
             var edit = new ToolStripMenuItem("Editar");
             Item(edit, "Desfazer", Keys.Control | Keys.Z, () => History(undo, redo));
             Item(edit, "Refazer", Keys.Control | Keys.Y, () => History(redo, undo));
+            Item(edit, "Escrever acorde", Keys.None, () => SetMode(EditMode.Chord)).ShortcutKeyDisplayString = "K";
             Item(edit, "Editar letra da nota", Keys.None, StartLyrics).ShortcutKeyDisplayString = "Shift+L";
             Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
             Item(edit, "Cifra, dinâmica e articulação…", Keys.Control | Keys.H, EditExpression);
@@ -159,6 +160,7 @@ namespace ValeScore
                 "V seleciona, N escreve notas, R escreve pausas e E apaga. Esc volta à seleção.\n" +
                 "Na pauta, use ← / → para navegar e ↑ / ↓ para mudar a altura.\n" +
                 "No modo Notas, A S D F G H J inserem Dó a Si. Enter insere a altura do cursor.\n" +
+                "K abre Acordes. Na seleção, Alt+↓ percorre as notas simultâneas.\n" +
                 "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
@@ -273,6 +275,7 @@ namespace ValeScore
                 WrapContents = false, BackColor = Dark };
             AddMode(modes, EditMode.Select, "Selecionar", "V");
             AddMode(modes, EditMode.Write, "Notas", "N");
+            AddMode(modes, EditMode.Chord, "Acordes", "K");
             AddMode(modes, EditMode.Rest, "Pausas", "R");
             AddMode(modes, EditMode.Erase, "Apagar", "E");
             AddMode(modes, EditMode.Lyrics, "Letra", "Shift+L");
@@ -548,7 +551,7 @@ namespace ValeScore
             else
             {
                 inputAlter = alter;
-                if (mode != EditMode.Write) SetMode(EditMode.Write);
+                if (mode != EditMode.Write && mode != EditMode.Chord) SetMode(EditMode.Write);
             }
             ShowDuration();
         }
@@ -559,7 +562,8 @@ namespace ValeScore
             mode = value;
             foreach (var item in modeButtons)
                 item.Value.BackColor = item.Key == value ? Accent : PanelColor;
-            sheet.ShowEntryPreview = mode == EditMode.Write || mode == EditMode.Rest;
+            sheet.ShowEntryPreview = mode == EditMode.Write || mode == EditMode.Chord || mode == EditMode.Rest;
+            sheet.PreviewChord = mode == EditMode.Chord;
             sheet.PreviewRest = mode == EditMode.Rest;
             sheet.Cursor = sheet.ShowEntryPreview ? Cursors.Cross : mode == EditMode.Lyrics ? Cursors.IBeam : Cursors.Default;
             sheet.Hover = null;
@@ -569,7 +573,8 @@ namespace ValeScore
                 "Escolha a figura e clique na pauta. Use as setas para mover o cursor.",
                 "Escolha uma pausa e clique na posição desejada. Enter insere no cursor.",
                 "Clique na nota ou pausa que deseja apagar. Ctrl+Z desfaz.",
-                "Clique numa nota para escrever a letra. Espaço avança por palavra e hífen por sílaba."
+                "Clique numa nota para escrever a letra. Espaço avança por palavra e hífen por sílaba.",
+                "Clique em alturas diferentes na mesma posição. As notas do acorde compartilham a duração. → avança."
             };
             modeHint.Text = hints[(int)value];
             ShowDuration();
@@ -578,7 +583,7 @@ namespace ValeScore
         private void PickPosition(StaffPosition pick, MouseButtons button)
         {
             if (!CommitLyric()) return;
-            if (button == MouseButtons.Left && duration == score.BarTicks && (mode == EditMode.Rest || mode == EditMode.Write))
+            if (button == MouseButtons.Left && duration == score.BarTicks && (mode == EditMode.Rest || mode == EditMode.Write || (mode == EditMode.Chord && !pick.HitNote)))
                 pick.Tick -= pick.Tick % score.BarTicks;
             position = pick;
             var note = SelectedNote();
@@ -590,9 +595,9 @@ namespace ValeScore
                 }
                 RefreshView();
             }
-            else if (mode == EditMode.Write)
+            else if (mode == EditMode.Write || mode == EditMode.Chord)
             {
-                Put(pick.Step, duration);
+                Put(pick.Step, duration, editSelection: false);
             }
             else if (mode == EditMode.Rest)
             {
@@ -616,7 +621,19 @@ namespace ValeScore
             if (!CommitLyric()) return;
             var note = SelectedEvent();
             if (note == null) return;
-            if (Change(() => score.Parts[position.Part].Staves[position.Staff].Remove(note)))
+            if (Change(() =>
+            {
+                var lane = score.Parts[position.Part].Staves[position.Staff];
+                var remaining = lane.Find(n => n != note && n.Tick == note.Tick);
+                if (remaining != null)
+                {
+                    if (remaining.Lyric == null) { remaining.Lyric = note.Lyric; remaining.HyphenAfter = note.HyphenAfter; }
+                    remaining.Chord = remaining.Chord ?? note.Chord;
+                    remaining.Dynamic = remaining.Dynamic ?? note.Dynamic;
+                    position.NoteId = remaining.Id;
+                }
+                lane.Remove(note);
+            }))
                 Report(note.IsRest ? "Pausa apagada" : "Nota apagada");
         }
 
@@ -667,7 +684,7 @@ namespace ValeScore
             var note = SelectedNote();
             bool hyphen = hyphenAfter ?? note.HyphenAfter;
             string value = lyricEntry.Text;
-            if (!Change(() => score.SetLyric(position.Part, position.Staff, position.Tick, value, hyphen)))
+            if (!Change(() => score.SetLyric(position.Part, position.Staff, position.Tick, value, hyphen, note.Id)))
             {
                 lyricEntry.Focus();
                 return false;
@@ -693,7 +710,7 @@ namespace ValeScore
             if (!CommitLyric()) return;
             var note = SelectedNote();
             if (note == null || note.Lyric == null) { Report("A nota selecionada está sem letra."); return; }
-            if (Change(() => score.SetLyric(position.Part, position.Staff, position.Tick, null, false)))
+            if (Change(() => score.SetLyric(position.Part, position.Staff, position.Tick, null, false, note.Id)))
                 Report("Letra removida da nota");
         }
 
@@ -726,8 +743,8 @@ namespace ValeScore
                     string selectedArticulation = articulation.SelectedIndex == 0 ? null : Articulations.XmlNames[articulation.SelectedIndex - 1];
                     if (Change(() =>
                     {
-                        score.SetExpression(position.Part, position.Staff, position.Tick, chord.Text, marking);
-                        score.SetArticulation(position.Part, position.Staff, position.Tick, selectedArticulation);
+                        score.SetExpression(position.Part, position.Staff, position.Tick, chord.Text, marking, note.Id);
+                        score.SetArticulation(position.Part, position.Staff, position.Tick, selectedArticulation, note.Id);
                     }))
                         dialog.DialogResult = DialogResult.OK;
                     else MessageBox.Show(dialog, status.Text);
@@ -746,8 +763,9 @@ namespace ValeScore
         private void ChangeArticulation(string mark)
         {
             if (!CommitLyric()) return;
-            if (SelectedNote() == null) { Report("Selecione uma nota para editar a articulação."); return; }
-            Change(() => score.SetArticulation(position.Part, position.Staff, position.Tick, mark));
+            var note = SelectedNote();
+            if (note == null) { Report("Selecione uma nota para editar a articulação."); return; }
+            Change(() => score.SetArticulation(position.Part, position.Staff, position.Tick, mark, note.Id));
         }
 
         private bool MoveToAdjacentNote(int direction)
@@ -759,6 +777,7 @@ namespace ValeScore
                 : lane.FindLast(n => n.Tick < position.Tick && (!pitchedOnly || !n.IsRest));
             if (note == null) return false;
             position.Tick = note.Tick;
+            position.NoteId = note.Id;
             if (!note.IsRest) position.Step = note.Step;
             RefreshView();
             RevealCursor();
@@ -943,7 +962,9 @@ namespace ValeScore
 
         private Note SelectedEvent()
         {
-            return score.Parts[position.Part].Staves[position.Staff].Find(n => n.Tick == position.Tick);
+            var lane = score.Parts[position.Part].Staves[position.Staff];
+            return lane.Find(n => n.Tick == position.Tick && n.Id == position.NoteId) ??
+                lane.Find(n => n.Tick == position.Tick && !n.IsRest && n.Step == position.Step) ?? lane.Find(n => n.Tick == position.Tick);
         }
 
         private bool Change(Action action)
@@ -1024,7 +1045,7 @@ namespace ValeScore
                 else Put(selected.Step, value, selected.Alter);
                 return;
             }
-            var tool = rest ? EditMode.Rest : EditMode.Write;
+            var tool = rest ? EditMode.Rest : mode == EditMode.Chord ? EditMode.Chord : EditMode.Write;
             if (mode != tool) SetMode(tool);
             SetDuration(value);
         }
@@ -1053,13 +1074,30 @@ namespace ValeScore
             else SetDuration(length);
         }
 
-        private bool Put(int step, int length, int? alteration = null)
+        private bool Put(int step, int length, int? alteration = null, bool editSelection = true)
         {
             int min = position.Staff == 0 ? 25 : 13;
             if (step < min || step > min + 18) { Report("Altura fora da extensão editável da pauta."); RefreshView(); return false; }
+            var selected = editSelection && mode == EditMode.Select ? SelectedNote() : null;
             position.Step = step;
             int effective = alteration ?? inputAlter ?? score.InputAccidental(position.Part, position.Staff, position.Tick, step);
-            return Change(() => score.Put(position.Part, position.Staff, position.Tick, length, step, effective));
+            return Change(() =>
+            {
+                if (selected != null)
+                {
+                    score.EditNote(position.Part, position.Staff, selected, length, step, effective);
+                    position.NoteId = selected.Id;
+                }
+                else if (mode == EditMode.Chord)
+                    position.NoteId = score.AddChordNote(position.Part, position.Staff, position.Tick, length, step, effective).Id;
+                else
+                {
+                    var onset = score.Parts[position.Part].Staves[position.Staff].Where(n => n.Tick == position.Tick).ToArray();
+                    if (onset.Length > 1)
+                        throw new InvalidOperationException("Use Acordes para acrescentar notas ou Selecionar para editar o acorde.");
+                    score.Put(position.Part, position.Staff, position.Tick, length, step, effective);
+                }
+            });
         }
 
         private bool PutRest(int length)
@@ -1122,7 +1160,7 @@ namespace ValeScore
             if (!CommitLyric()) return;
             var note = SelectedNote();
             if (note == null) { Report("Selecione uma nota."); return; }
-            Change(() => score.SetCourtesy(position.Part, position.Staff, position.Tick, !note.Courtesy));
+            Change(() => score.SetCourtesy(position.Part, position.Staff, position.Tick, !note.Courtesy, note.Id));
         }
 
         private void Respell(int direction)
@@ -1130,7 +1168,8 @@ namespace ValeScore
             if (!CommitLyric()) return;
             Change(() =>
             {
-                if (!score.Respelling(position.Part, position.Staff, position.Tick, direction))
+                var note = SelectedNote();
+                if (note == null || !score.Respelling(position.Part, position.Staff, position.Tick, direction, note.Id))
                     throw new InvalidOperationException("Não há grafia enarmônica desse lado para a nota selecionada.");
             });
         }
@@ -1298,6 +1337,7 @@ namespace ValeScore
             if (key == Keys.Space) { Play(); return true; }
             if (key == Keys.V || key == Keys.Escape) { SetMode(EditMode.Select); return true; }
             if (key == Keys.N) { SetMode(EditMode.Write); return true; }
+            if (key == Keys.K) { SetMode(EditMode.Chord); return true; }
             if (key == Keys.R) { SetMode(EditMode.Rest); return true; }
             if (key == Keys.E) { SetMode(EditMode.Erase); return true; }
             if (key >= Keys.D1 && key <= Keys.D5)
@@ -1308,12 +1348,27 @@ namespace ValeScore
                 return true;
             }
             if (key == Keys.Delete) { RemoveNote(); return true; }
+            if (mode == EditMode.Select && key == (Keys.Alt | Keys.Down))
+            {
+                var cluster = score.Parts[position.Part].Staves[position.Staff].Where(n => !n.IsRest && n.Tick == position.Tick)
+                    .OrderByDescending(n => n.Step).ToList();
+                if (cluster.Count > 1)
+                {
+                    var next = cluster[(cluster.IndexOf(SelectedNote()) + 1) % cluster.Count];
+                    position.NoteId = next.Id;
+                    position.Step = next.Step;
+                    RefreshView();
+                    return true;
+                }
+            }
             if (key == Keys.OemPeriod || key == Keys.Decimal) { ApplyDots(1); return true; }
             if (key == Keys.Left || key == Keys.Right)
             {
                 int direction = key == Keys.Right ? 1 : -1;
-                if (mode != EditMode.Write && mode != EditMode.Rest && MoveToAdjacentNote(direction)) return true;
-                position.Tick = Math.Max(0, Math.Min(score.Bars * score.BarTicks - 1, position.Tick + direction));
+                if (mode != EditMode.Write && mode != EditMode.Chord && mode != EditMode.Rest && MoveToAdjacentNote(direction)) return true;
+                int delta = direction > 0 && mode == EditMode.Chord ? (SelectedEvent() == null ? duration : SelectedEvent().Length) : 1;
+                position.Tick = Math.Max(0, Math.Min(score.Bars * score.BarTicks - 1, position.Tick + direction * delta));
+                position.NoteId = Guid.Empty;
                 var note = SelectedNote();
                 if (note != null) position.Step = note.Step;
                 RefreshView();
@@ -1323,11 +1378,11 @@ namespace ValeScore
             if (key == Keys.Up || key == Keys.Down)
             {
                 var note = SelectedNote();
-                int step = (note == null ? position.Step : note.Step) + (key == Keys.Up ? 1 : -1);
+                int step = (note == null || mode == EditMode.Chord ? position.Step : note.Step) + (key == Keys.Up ? 1 : -1);
                 int min = position.Staff == 0 ? 25 : 13;
                 if (step >= min && step <= min + 18)
                 {
-                    if (note == null) { position.Step = step; RefreshView(); }
+                    if (note == null || mode == EditMode.Chord) { position.Step = step; RefreshView(); }
                     else Put(step, note.Length, note.Alter);
                 }
                 return true;
@@ -1337,16 +1392,16 @@ namespace ValeScore
                 if (PutRest(duration)) AdvanceInput();
                 return true;
             }
-            if (mode != EditMode.Write) return base.ProcessCmdKey(ref msg, key);
+            if (mode != EditMode.Write && mode != EditMode.Chord) return base.ProcessCmdKey(ref msg, key);
             if (key == Keys.Enter)
             {
-                if (Put(position.Step, duration)) AdvanceInput();
+                if (Put(position.Step, duration) && mode == EditMode.Write) AdvanceInput();
                 return true;
             }
             int degree = Array.IndexOf(PitchKeys, key);
             if (degree >= 0)
             {
-                if (Put(position.Step / 7 * 7 + degree, duration)) AdvanceInput();
+                if (Put(position.Step / 7 * 7 + degree, duration) && mode == EditMode.Write) AdvanceInput();
                 return true;
             }
             return base.ProcessCmdKey(ref msg, key);
@@ -1765,7 +1820,7 @@ namespace ValeScore
                     {
                         BeginInvoke(new Action(() =>
                         {
-                            if (generation == inputGeneration && !IsDisposed && !atHome && mode == EditMode.Write &&
+                            if (generation == inputGeneration && !IsDisposed && !atHome && (mode == EditMode.Write || mode == EditMode.Chord) &&
                                 !preparing && !timer.Enabled && !editingLyric) EnterMidiPitch(pitch);
                         }));
                     }
@@ -1791,7 +1846,7 @@ namespace ValeScore
             int octave = pitch / 12 - 1;
             int tone = pitch % 12;
             int step = Array.FindLastIndex(Score.Semitones, value => value <= tone);
-            if (Put(octave * 7 + step, duration, tone - Score.Semitones[step])) AdvanceInput();
+            if (Put(octave * 7 + step, duration, tone - Score.Semitones[step]) && mode == EditMode.Write) AdvanceInput();
         }
 
         private void ImportMidiScore()

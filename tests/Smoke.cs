@@ -31,8 +31,71 @@ internal static class Smoke
         catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     }
 
+    private static void ChordChecks(string directory)
+    {
+        var score = Score.New(false);
+        score.Put(0, 0, 0, 4, 28, 0);
+        var middle = score.AddChordNote(0, 0, 0, 8, 30, 0);
+        var top = score.AddChordNote(0, 0, 0, 2, 31, 0);
+        score.Put(0, 0, 8, 4, 32, 0);
+        var lane = score.Parts[0].Staves[0];
+        Assert(lane.Take(3).All(n => n.Tick == 0 && n.Length == 4) && score.AddChordNote(0, 0, 0, 4, 30, 0) == middle,
+            "Acorde herda a duração e evita altura duplicada");
+        score.EditNote(0, 0, middle, 6, 30, -1);
+        bool blocked = false;
+        try { score.EditNote(0, 0, middle, 12, 29, 0); }
+        catch (InvalidOperationException) { blocked = true; }
+        Assert(blocked && lane.Take(3).All(n => n.Length == 6) && middle.Alter == -1,
+            "Duração comum e acidente individual são editáveis sem sobreposição");
+        score.SetCourtesy(0, 0, 0, true, middle.Id);
+        score.SetExpression(0, 0, 0, null, "mf", top.Id);
+        string projectPath = Path.Combine(directory, "acorde.valescore");
+        score.Save(projectPath);
+        Assert(Score.Open(projectPath).Snapshot().SequenceEqual(score.Snapshot()), "Projeto reabre acorde com IDs, alturas e duração");
+        score.PasteBar(1, score.CopyBar(0));
+        Assert(lane.Count(n => n.Tick == score.BarTicks) == 3 && lane.Select(n => n.Id).Distinct().Count() == lane.Count,
+            "Copiar compasso conserva o acorde e gera IDs distintos");
+        using (var sheet = new ScorePage())
+        {
+            sheet.LoadScore(score);
+            int topY = sheet.Engraving.StaffTop(0, 0);
+            float x = sheet.Engraving.MeasureOf(0).At(0);
+            var bottomHit = sheet.Hit(x, topY + 50);
+            var topHit = sheet.Hit(x + 10.5f, topY + 35);
+            Assert(bottomHit != null && topHit != null && bottomHit.NoteId == lane[0].Id && topHit.NoteId == top.Id,
+                "Cabeças deslocadas de um acorde podem ser selecionadas separadamente");
+        }
+        using (var file = new MemoryStream())
+        {
+            Output.MusicXml(score, file);
+            file.Position = 0;
+            var doc = XDocument.Load(file);
+            Assert(doc.Descendants("chord").Count() == 4, "MusicXML usa membros de acorde sem avançar o cursor");
+            file.Position = 0;
+            var converted = MusicXmlImport.Read(file, "Acorde").Project.Parts[0].Staves[0].Where(n => !n.IsRest).ToList();
+            Assert(converted.Count == lane.Count && converted.Select(n => n.Tick).SequenceEqual(lane.Select(n => n.Tick)) &&
+                converted.Select(n => n.Midi).SequenceEqual(lane.Select(n => n.Midi)) && converted[1].Courtesy &&
+                converted[3].Tick == 8, "MusicXML preserva acorde, acidente de cortesia e nota seguinte");
+        }
+        using (var file = new MemoryStream())
+        {
+            MidiSequence.Export(score, file);
+            file.Position = 0;
+            var midi = MidiSequence.Read(file);
+            var attacks = midi.Events.Where(e => (e.Status & 240) == 0x90 && e.Data2 != 0 && e.Tick == 0).ToArray();
+            Assert(attacks.Length == 3 && attacks.All(e => e.Data2 == Score.Velocity("mf")),
+                "MIDI toca as três alturas simultâneas com a mesma dinâmica");
+            var imported = MidiImport.Convert(midi, "Acorde");
+            Assert(imported.Skipped == 0 && imported.Project.Parts[0].Staves[0].Count(n => n.Tick == 0) == 3,
+                "Importação MIDI conserva notas simultâneas de igual duração na mesma pauta");
+        }
+        using (var wave = Output.Wave(score, false))
+            Assert(wave.ToArray().Skip(44).Any(b => b != 0), "Acorde produz sinal no sintetizador interno");
+    }
+
     private static void Run(string directory)
     {
+        ChordChecks(directory);
         var score = Score.New(true);
         score.Validate();
         Assert(ScoreTemplate.Library.Length == 6 && ScoreTemplate.Library.All(template => template.Create().Parts.Count >= 1),
@@ -732,6 +795,23 @@ internal static class Smoke
             click(new Point((int)((secondBar.Left + secondBar.Width / 2) * sheet.Zoom),
                 (int)((ScoreLayout.FirstStaffTop + 12) * sheet.Zoom)));
             Assert(!sheet.Music.Parts[0].Staves[0].Any(n => n.Tick == 16), "Borracha encontra a pausa centralizada");
+            type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(false), null });
+            Descendants(editor).OfType<Button>().Single(button => button.Text == "Acordes").PerformClick();
+            click(sheet.OnSheet(sheet.Selection, 50));
+            click(sheet.OnSheet(sheet.Selection, 40));
+            click(sheet.OnSheet(sheet.Selection, 30));
+            Assert(sheet.Music.Parts[0].Staves[0].Count == 3 && sheet.Music.Parts[0].Staves[0].All(n => n.Tick == 0),
+                "Botão Acordes e cliques escrevem uma tríade na mesma posição");
+            key(Keys.V);
+            click(sheet.OnSheet(sheet.Selection, 40));
+            key(Keys.Delete);
+            Assert(sheet.Music.Parts[0].Staves[0].Select(n => n.Step).SequenceEqual(new[] { 28, 32 }),
+                "Delete apaga apenas a altura clicada no acorde");
+            ((Button)undo.GetValue(editor)).PerformClick();
+            key(Keys.Alt | Keys.Down);
+            key(Keys.D2);
+            Assert(sheet.Selection.NoteId != Guid.Empty && sheet.Music.Parts[0].Staves[0].Count == 3 &&
+                sheet.Music.Parts[0].Staves[0].All(n => n.Length == 8), "Teclado seleciona no acorde e muda a duração de todas as alturas");
             type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(true), null });
             editor.Close();
         }

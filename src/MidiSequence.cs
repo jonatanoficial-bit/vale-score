@@ -253,10 +253,11 @@ namespace ValeScore
                     foreach (var staff in part.Staves)
                     {
                         int loudness = 88;
-                        foreach (var note in staff.Where(n => !n.IsRest))
+                        foreach (var onset in staff.Where(n => !n.IsRest).GroupBy(n => n.Tick))
                         {
-                            if (note.Dynamic != null) loudness = Score.Velocity(note.Dynamic);
-                            attacks.Add(Tuple.Create(note, loudness));
+                            string marking = onset.Select(n => n.Dynamic).FirstOrDefault(value => value != null);
+                            if (marking != null) loudness = Score.Velocity(marking);
+                            foreach (var note in onset) attacks.Add(Tuple.Create(note, loudness));
                         }
                     }
                     foreach (var group in attacks.GroupBy(n => n.Item1.Midi))

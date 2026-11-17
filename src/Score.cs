@@ -64,7 +64,9 @@ namespace ValeScore
             BeatType = beatType;
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 8;
+        public const int CurrentVersion = 9;
+        public const int MaxChordNotes = 8;
+        private const int MaxProjectBytes = 24 * 1024 * 1024;
         [DataMember(EmitDefaultValue = false)] public int Fifths;
         [DataMember(EmitDefaultValue = false)] public bool MinorKey;
 
@@ -83,24 +85,24 @@ namespace ValeScore
             return previous == null ? KeySignature.Effective(Fifths, step) : previous.Alter;
         }
 
-        public bool Respelling(int part, int staff, int tick, int direction)
+        public bool Respelling(int part, int staff, int tick, int direction, Guid id = default(Guid))
         {
-            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty || n.Id == id));
             if (note == null || (direction != 1 && direction != -1)) return false;
             int step = note.Step + direction;
             int min = staff == 0 ? 25 : 13;
             if (step < min || step > min + 18) return false;
             int natural = 12 + (step / 7) * 12 + Semitones[step % 7];
             int alter = note.Midi - natural;
-            if (alter < -2 || alter > 2) return false;
+            if (alter < -2 || alter > 2 || Parts[part].Staves[staff].Any(n => n != note && n.Tick == tick && n.Step == step)) return false;
             note.Step = step;
             note.Alter = alter;
             return true;
         }
 
-        public void SetCourtesy(int part, int staff, int tick, bool enabled)
+        public void SetCourtesy(int part, int staff, int tick, bool enabled, Guid id = default(Guid))
         {
-            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty || n.Id == id));
             if (note == null) throw new InvalidOperationException("Selecione uma nota para editar o acidente.");
             note.Courtesy = enabled;
         }
@@ -168,6 +170,41 @@ namespace ValeScore
             PutEvent(part, staff, new Note { Tick = tick, Length = length, IsRest = true });
         }
 
+        public Note AddChordNote(int part, int staff, int tick, int length, int step, int alter)
+        {
+            var lane = Parts[part].Staves[staff];
+            var onset = lane.FirstOrDefault(n => n.Tick == tick);
+            if (onset == null || onset.IsRest)
+            {
+                Put(part, staff, tick, length, step, alter);
+                return lane.First(n => n.Tick == tick);
+            }
+
+            var note = new Note { Tick = tick, Length = onset.Length, Step = step, Alter = alter };
+            var cluster = lane.Where(n => n.Tick == tick).ToArray();
+            var same = cluster.FirstOrDefault(n => n.Step == step && n.Alter == alter);
+            if (same != null) return same;
+            if (!ValidNote(note) || cluster.Length >= MaxChordNotes ||
+                cluster.Any(n => n.Step == step || n.Midi == note.Midi))
+                throw new InvalidOperationException("O acorde aceita até oito alturas distintas, sem grafias duplicadas.");
+            lane.Insert(lane.IndexOf(cluster[cluster.Length - 1]) + 1, note);
+            return note;
+        }
+
+        public void EditNote(int part, int staff, Note note, int length, int step, int alter)
+        {
+            var lane = Parts[part].Staves[staff];
+            var pitch = new Note { Tick = note.Tick, Length = length, Step = step, Alter = alter };
+            var cluster = lane.Where(n => n.Tick == note.Tick).ToArray();
+            if (note.IsRest || !lane.Contains(note) || !ValidNote(pitch) ||
+                cluster.Any(n => n != note && (n.Step == step || n.Midi == pitch.Midi)) ||
+                lane.Any(n => n.Tick > note.Tick && n.Tick < note.Tick + length))
+                throw new InvalidOperationException("A alteração gera uma altura duplicada ou uma sobreposição rítmica.");
+            note.Step = step;
+            note.Alter = alter;
+            foreach (var member in cluster) member.Length = length;
+        }
+
         private void PutEvent(int part, int staff, Note note)
         {
             int tick = note.Tick;
@@ -175,8 +212,9 @@ namespace ValeScore
             if (!ValidNote(note) || tick >= Bars * BarTicks)
                 throw new InvalidOperationException("A figura precisa caber no compasso e na extensão da pauta.");
             var notes = Parts[part].Staves[staff];
-            var previous = notes.FirstOrDefault(n => n.Tick == tick);
-            if (notes.Any(n => n != previous && n.Tick < tick + length && tick < n.Tick + n.Length))
+            var onset = notes.Where(n => n.Tick == tick).ToArray();
+            var previous = onset.FirstOrDefault(n => !n.IsRest && n.Step == note.Step) ?? onset.FirstOrDefault();
+            if (notes.Any(n => n.Tick != tick && n.Tick < tick + length && tick < n.Tick + n.Length))
                 throw new InvalidOperationException("A figura se sobrepõe a outra nesta pauta.");
             if (previous != null)
             {
@@ -190,15 +228,15 @@ namespace ValeScore
                     note.Articulation = previous.Articulation;
                     note.Courtesy = previous.Courtesy;
                 }
-                notes.Remove(previous);
+                notes.RemoveAll(n => n.Tick == tick);
             }
             notes.Add(note);
-            notes.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+            SortByTick(notes);
         }
 
-        public void SetExpression(int part, int staff, int tick, string chord, string dynamic)
+        public void SetExpression(int part, int staff, int tick, string chord, string dynamic, Guid id = default(Guid))
         {
-            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty || n.Id == id));
             if (note == null) throw new InvalidOperationException("Selecione uma nota para adicionar cifra ou dinâmica.");
             ChordSymbol symbol = null;
             if (!string.IsNullOrWhiteSpace(chord) && !ChordSymbol.TryParse(chord, out symbol))
@@ -208,18 +246,18 @@ namespace ValeScore
             note.Dynamic = dynamic;
         }
 
-        public void SetArticulation(int part, int staff, int tick, string articulation)
+        public void SetArticulation(int part, int staff, int tick, string articulation, Guid id = default(Guid))
         {
-            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest);
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty || n.Id == id));
             if (note == null) throw new InvalidOperationException("Selecione uma nota para editar a articulação.");
             if (articulation != null && !Articulations.XmlNames.Contains(articulation))
                 throw new InvalidOperationException("Articulação inválida.");
             note.Articulation = articulation;
         }
 
-        public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter)
+        public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter, Guid id = default(Guid))
         {
-            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick);
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && (id == Guid.Empty || n.Id == id));
             if (note == null || note.IsRest) throw new InvalidOperationException("Selecione uma nota para escrever a letra.");
             string lyric = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
             if (!ValidLyric(lyric))
@@ -310,7 +348,7 @@ namespace ValeScore
                 (partIndex.HasValue && (partIndex.Value < 0 || partIndex.Value >= Parts.Count)) ||
                 amount < -24 || amount > 24)
                 throw new ArgumentOutOfRangeException("Intervalo de transposição inválido.");
-            var changes = new List<Tuple<Note, int, int, string>>();
+            var changes = new List<Tuple<Note, int, int, string, List<Note>>>();
             for (int p = 0; p < Parts.Count; p++)
             {
                 if (partIndex.HasValue && p != partIndex.Value) continue;
@@ -339,9 +377,12 @@ namespace ValeScore
                         throw new InvalidOperationException("Uma nota sairia da extensão editável da pauta. Escolha um intervalo menor.");
                     ChordSymbol chord;
                     string symbol = ChordSymbol.TryParse(note.Chord, out chord) ? chord.Transpose(amount, chromatic) : null;
-                    changes.Add(Tuple.Create(note, step, alter, symbol));
+                    changes.Add(Tuple.Create(note, step, alter, symbol, Parts[p].Staves[staff]));
                 }
             }
+            if (changes.GroupBy(c => new { c.Item1.Tick, Lane = c.Item5 })
+                .Any(group => group.GroupBy(c => c.Item2).Any(spelling => spelling.Count() > 1)))
+                throw new InvalidOperationException("A transposição reúne duas notas do acorde na mesma linha ou espaço.");
             foreach (var change in changes)
             {
                 change.Item1.Step = change.Item2;
@@ -367,9 +408,16 @@ namespace ValeScore
                 }).ToArray();
                 foreach (var note in staff.Where(n => n.Tick >= end)) note.Tick += BarTicks;
                 staff.AddRange(copies);
-                staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+                SortByTick(staff);
             }
             Bars++;
+        }
+
+        private static void SortByTick(List<Note> lane)
+        {
+            var ordered = lane.OrderBy(n => n.Tick).ToArray();
+            lane.Clear();
+            lane.AddRange(ordered);
         }
 
         public Score CopyBar(int bar)
@@ -405,7 +453,7 @@ namespace ValeScore
                     IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
                     Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy
                 }));
-                staff.Sort((a, b) => a.Tick.CompareTo(b.Tick));
+                SortByTick(staff);
             }
         }
 
@@ -486,21 +534,36 @@ namespace ValeScore
                     throw new InvalidDataException("Instrumento ou configuração de pautas inválida.");
                 foreach (var lane in p.Staves)
                 {
-                    int end = 0;
-                    if (lane == null || lane.Count > Bars * BarTicks) throw new InvalidDataException("Pauta inválida.");
+                    if (lane == null || lane.Count > Bars * BarTicks * MaxChordNotes)
+                        throw new InvalidDataException("Pauta inválida.");
+                    int end = 0, tick = -1, length = 0;
+                    var steps = new HashSet<int>();
+                    var pitches = new HashSet<int>();
                     foreach (var n in lane)
                     {
-                        if (!ValidNote(n) || n.Tick < end || n.Tick >= Bars * BarTicks ||
-                            !ids.Add(n.Id) || !ValidLyric(n.Lyric) || (n.Lyric == null && n.HyphenAfter))
+                        if (!ValidNote(n) || n.Tick >= Bars * BarTicks || !ids.Add(n.Id) ||
+                            !ValidLyric(n.Lyric) || (n.Lyric == null && n.HyphenAfter))
                             throw new InvalidDataException("Nota ou ritmo inválido no projeto.");
-                        end = n.Tick + n.Length;
+                        if (n.Tick != tick)
+                        {
+                            if (n.Tick < end) throw new InvalidDataException("Figuras sobrepostas na pauta.");
+                            tick = n.Tick;
+                            length = n.Length;
+                            end = tick + length;
+                            steps.Clear();
+                            pitches.Clear();
+                        }
+                        if (n.Length != length || steps.Count == MaxChordNotes ||
+                            ((n.IsRest || steps.Contains(-1)) && steps.Count > 0) ||
+                            !steps.Add(n.IsRest ? -1 : n.Step) || !pitches.Add(n.IsRest ? -1 : n.Midi))
+                            throw new InvalidDataException("Acorde inválido no projeto.");
                     }
                 }
             }
         }
 
         private static readonly DataContractJsonSerializer Serializer =
-            new DataContractJsonSerializer(typeof(Score), new DataContractJsonSerializerSettings { MaxItemsInObjectGraph = 70000 });
+            new DataContractJsonSerializer(typeof(Score), new DataContractJsonSerializerSettings { MaxItemsInObjectGraph = 1800000 });
 
         public byte[] Snapshot()
         {
@@ -536,7 +599,7 @@ namespace ValeScore
         {
             using (var file = File.OpenRead(path))
             {
-                if (file.Length > 2 * 1024 * 1024) throw new InvalidDataException("O projeto excede 2 MB.");
+                if (file.Length > MaxProjectBytes) throw new InvalidDataException("O projeto excede 24 MB.");
                 var data = new byte[(int)file.Length];
                 int read = 0;
                 while (read < data.Length)

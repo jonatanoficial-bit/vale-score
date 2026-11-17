@@ -57,13 +57,17 @@ namespace ValeScore
                 foreach (var staff in part.Staves)
                 {
                     int velocity = 88;
-                    foreach (var note in staff)
+                    foreach (var onset in staff.Where(n => !n.IsRest).GroupBy(n => n.Tick))
                     {
-                        if (note.IsRest) continue;
-                        if (note.Dynamic != null) velocity = Score.Velocity(note.Dynamic);
-                        int start = (int)Math.Round(note.Tick * tick);
-                        int count = (int)Math.Round((note.Tick + note.Length * Articulations.SoundLength(note.Articulation)) * tick) - start;
-                        AddTone(samples, start, count, note.Midi, gain * Articulations.Attack(note.Articulation, velocity) / 88, decay);
+                        string marking = onset.Select(n => n.Dynamic).FirstOrDefault(value => value != null);
+                        if (marking != null) velocity = Score.Velocity(marking);
+                        double headroom = Math.Sqrt(onset.Count());
+                        foreach (var note in onset)
+                        {
+                            int start = (int)Math.Round(note.Tick * tick);
+                            int count = (int)Math.Round((note.Tick + note.Length * Articulations.SoundLength(note.Articulation)) * tick) - start;
+                            AddTone(samples, start, count, note.Midi, gain * Articulations.Attack(note.Articulation, velocity) / (88 * headroom), decay);
+                        }
                     }
                 }
             }
@@ -264,7 +268,8 @@ namespace ValeScore
                             int cursor = start;
                             var lane = part.Staves[staff];
                             var previous = lane.LastOrDefault(n => n.Tick < start && !n.IsRest);
-                            var events = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
+                            var onsets = lane.Where(n => n.Tick >= start && n.Tick < end).GroupBy(n => n.Tick).ToArray();
+                            var events = onsets.Select(group => group.First()).ToArray();
                             var accidentals = new Dictionary<int, int>();
                             int groupStart = 0, groupEnd = 0;
                             for (int i = 0; i < events.Length; i++)
@@ -274,6 +279,8 @@ namespace ValeScore
                                 {
                                     groupStart = i;
                                     groupEnd = Score.BeamGroupEnd(events, i, start, score.BeatTicks);
+                                    for (int j = i; j < groupEnd; j++)
+                                        if (onsets[j].Count() > 1) { groupEnd = Math.Max(i + 1, j); break; }
                                 }
                                 while (cursor < note.Tick)
                                 {
@@ -282,18 +289,23 @@ namespace ValeScore
                                     cursor += rest;
                                 }
                                 string beam = groupEnd - groupStart < 2 ? null : i == groupStart ? "begin" : i == groupEnd - 1 ? "end" : "continue";
+                                var members = onsets[i];
+                                var chordMark = members.Select(n => n.Chord).FirstOrDefault(mark => mark != null);
+                                var dynamic = members.Select(n => n.Dynamic).FirstOrDefault(mark => mark != null);
                                 ChordSymbol chord;
-                                if (note.Chord != null && ChordSymbol.TryParse(note.Chord, out chord)) chord.Write(xml, staff, part.Staves.Count > 1);
-                                if (note.Dynamic != null) WriteDynamic(xml, note.Dynamic, staff, part.Staves.Count > 1);
-                                bool showAccidental = !note.IsRest && (note.Courtesy ||
-                                    KeySignature.Prior(score.Fifths, accidentals, note.Step) != note.Alter);
-                                WriteNote(xml, note, note.Length, staff, part.Staves.Count > 1,
-                                    previous != null && previous.HyphenAfter, beam, showAccidental: showAccidental);
-                                if (!note.IsRest)
+                                if (ChordSymbol.TryParse(chordMark, out chord)) chord.Write(xml, staff, part.Staves.Count > 1);
+                                if (dynamic != null) WriteDynamic(xml, dynamic, staff, part.Staves.Count > 1);
+                                foreach (var member in members)
                                 {
-                                    previous = note;
-                                    accidentals[note.Step] = note.Alter;
+                                    bool extra = member != note;
+                                    bool showAccidental = !member.IsRest && (member.Courtesy ||
+                                        KeySignature.Prior(score.Fifths, accidentals, member.Step) != member.Alter);
+                                    WriteNote(xml, member, member.Length, staff, part.Staves.Count > 1,
+                                        previous != null && previous.HyphenAfter, extra ? null : beam,
+                                        showAccidental: showAccidental, chordMember: extra);
+                                    if (!member.IsRest) accidentals[member.Step] = member.Alter;
                                 }
+                                if (!note.IsRest) previous = members.FirstOrDefault(n => n.Lyric != null) ?? note;
                                 cursor += note.Length;
                             }
                             while (cursor < end)
@@ -329,9 +341,10 @@ namespace ValeScore
         }
 
         private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano,
-            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false)
+            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false, bool chordMember = false)
         {
             xml.WriteStartElement("note");
+            if (chordMember) xml.WriteElementString("chord", "");
             if (note == null || note.IsRest)
             {
                 xml.WriteStartElement("rest");

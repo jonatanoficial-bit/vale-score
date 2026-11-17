@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.15.0 · Prévia para Windows x64**
+**0.16.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.15.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.15.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.16.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.16.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -16,11 +16,11 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Navegar.** Use o zoom e as setas de página na barra inferior. **F1** abre a lista de atalhos.
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
 - **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
-- **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. Cada tecla insere uma nota e avança o cursor na pauta ativa. A entrada é nota por nota, com a duração escolhida na paleta.
+- **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. No modo **Notas**, cada tecla insere uma nota e avança. No modo **Acordes**, as teclas acumularão notas na posição atual até você avançar.
 - **Exportar.** O botão **Exportar** oferece MIDI tipo 1 com uma pista por instrumento, MusicXML com letras, WAV e impressão. Para PDF, escolha **Microsoft Print to PDF** quando disponível no Windows.
 - **Salvar.** O formato `.valescore` armazena a partitura localmente. Ctrl+S salva. Ctrl+Z e Ctrl+Y navegam pelo histórico de edição.
 
-A prévia suporta até 64 compassos, uma linha melódica e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
+A prévia suporta até 64 compassos, uma voz rítmica com acordes e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
 
 Use **Importar MIDI** ou **Ctrl+I** para criar um projeto editável. A conversão usa semicolcheias, fórmula inicial compatível e andamento inicial, e distribui as notas em até quatro pianos com uma voz por pauta. O aplicativo informa ajustes e omissões. O MIDI original fica disponível em **Reprodução → Tocar ou parar MIDI aberto**. O som interno de arquivos MIDI usa um timbre simples, lê andamento e pedal e tem limite de 10 minutos. A saída MIDI do Windows permite usar os timbres do dispositivo selecionado.
 
@@ -33,6 +33,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.16
+
+- Use **Acordes** (**K**), escolha a figura e clique em alturas diferentes na mesma posição da pauta. Até oito notas compartilham a duração e a haste. **→** avança para a próxima posição.
+- Em **Selecionar**, clique na cabeça da nota ou pressione **Alt+↓** para percorrer as notas do acorde. **Delete** apaga uma altura. Alterar a figura muda a duração do acorde inteiro.
+- Acordes são ouvidos no som interno e exportados em WAV, MIDI e MusicXML/MXL. A importação agrupa notas simultâneas compatíveis e mantém o relatório de conversão.
+- Abra **Valsa da tarde** na Central de projetos para ver os acordes na pauta. Projetos anteriores abrem no esquema atualizado.
 
 ## Novidades da 0.15
 
@@ -90,7 +97,7 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Novidades da 0.7
 
-- **Arquivo → Importar MusicXML ou MXL** abre partituras editáveis com relatório. A prévia aceita score-partwise com fórmula fixa compatível com até quatro partes, duas pautas por parte e uma voz por pauta. Acordes e outras vozes simultâneas podem ser omitidos. O arquivo original fica intacto.
+- **Arquivo → Importar MusicXML ou MXL** abre partituras editáveis com relatório. A prévia aceita score-partwise com fórmula fixa compatível com até quatro partes, duas pautas por parte e uma voz por pauta. Desde a 0.16, acordes de duração comum são importados. Vozes independentes sobrepostas podem ser omitidas. O arquivo original fica intacto.
 - **Exportar → MusicXML compactado** gera um arquivo MXL interoperável com leitores que implementam o [contêiner MusicXML](https://www.w3.org/2021/06/musicxml40/tutorial/compressed-mxl-files/).
 - A paleta **Pontos** aplica ou retira um ou dois pontos em notas e pausas quando a duração cabe na grade. Para um ponto, também vale a tecla de ponto.
 - O menu **Editar** insere ou remove compassos e copia ou cola o conteúdo de um compasso nas pautas correspondentes. **Ctrl+Shift+C** copia, **Ctrl+Shift+V** cola substituindo o conteúdo do compasso atual e **Ctrl+Z** desfaz. A cópia permanece disponível durante a sessão.

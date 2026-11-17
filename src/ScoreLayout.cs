@@ -120,6 +120,7 @@ namespace ValeScore
             var halfWidths = new float[barTicks];
             var alterations = new int[barTicks];
             var dots = new int[barTicks];
+            var chordHeads = new int[barTicks];
             var links = new List<Tuple<int, float>>[barTicks];
             foreach (var lane in lanes)
             {
@@ -128,6 +129,15 @@ namespace ValeScore
                 int previousChord = -1, previousDynamic = -1;
                 float previousChordWidth = 0, previousDynamicWidth = 0;
                 var accidentals = new Dictionary<int, int>();
+                foreach (var onset in lane.Where(n => n.Tick >= start && n.Tick < start + barTicks).GroupBy(n => n.Tick))
+                {
+                    if (onset.Count() < 2) continue;
+                    int unit = onset.Key - start;
+                    int[] steps = onset.Select(n => n.Step).OrderBy(step => step).ToArray();
+                    if (!steps.Zip(steps.Skip(1), (a, b) => b - a).Contains(1)) continue;
+                    chordHeads[unit] = 11;
+                    if (unit + 1 < barTicks) chordHeads[unit + 1] = 11;
+                }
                 foreach (var note in lane.Where(n => n.Tick >= start && n.Tick < start + barTicks))
                 {
                     int origin = note.Tick - start;
@@ -159,14 +169,14 @@ namespace ValeScore
             float end = 0;
             for (int unit = 0; unit < offsets.Length; unit++)
             {
-                float gap = Math.Max(alterations[unit], 11.2f) + dots[unit] * 4.5f;
+                float gap = Math.Max(alterations[unit], 11.2f) + dots[unit] * 4.5f + chordHeads[unit];
                 float left = unit == 0 ? Math.Max(19, gap) : offsets[unit - 1] + gap;
                 left = Math.Max(left, halfWidths[unit] + 8);
                 if (links[unit] != null)
                     foreach (var link in links[unit])
                         left = Math.Max(left, offsets[link.Item1] + link.Item2);
                 offsets[unit] = left;
-                end = Math.Max(end, left + Math.Max(13, halfWidths[unit] + 8));
+                end = Math.Max(end, left + Math.Max(13 + chordHeads[unit], halfWidths[unit] + 8));
             }
             return new Measure(bar, offsets, end);
         }
