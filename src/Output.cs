@@ -56,6 +56,7 @@ namespace ValeScore
                 double decay = part.Instrument == "Voz" ? 0.8 : part.Instrument == "Violão" ? 5.0 : 2.8;
                 foreach (var staff in part.Staves)
                 {
+                    var lengths = NoteTies.AttackLengths(staff);
                     var velocities = new[] { 88, 88 };
                     foreach (var onset in staff.Where(n => !n.IsRest).GroupBy(n => new { n.Tick, n.Voice }))
                     {
@@ -64,8 +65,10 @@ namespace ValeScore
                         double headroom = Math.Sqrt(onset.Count());
                         foreach (var note in onset)
                         {
+                            double length;
+                            if (!lengths.TryGetValue(note.Id, out length)) continue;
                             int start = (int)Math.Round(note.Tick * tick);
-                            int count = (int)Math.Round((note.Tick + note.Length * Articulations.SoundLength(note.Articulation)) * tick) - start;
+                            int count = (int)Math.Round((note.Tick + length) * tick) - start;
                             AddTone(samples, start, count, note.Midi, gain * Articulations.Attack(note.Articulation, velocities[note.Voice]) / (88 * headroom), decay);
                         }
                     }
@@ -262,6 +265,7 @@ namespace ValeScore
                             var lane = part.Staves[staff];
                             var measureNotes = lane.Where(n => n.Tick >= start && n.Tick < end).ToArray();
                             var marks = score.PrintedAccidentals(measureNotes);
+                            var tiedFrom = new HashSet<Guid>(lane.Where(n => n.TiedTo.HasValue && n.Tick < end).Select(n => n.TiedTo.Value));
                             int voices = measureNotes.Any(n => n.Voice == 1) ? 2 : 1;
                             for (int voice = 0; voice < voices; voice++)
                             {
@@ -271,7 +275,7 @@ namespace ValeScore
                                     xml.WriteElementString("duration", score.BarTicks.ToString());
                                     xml.WriteEndElement();
                                 }
-                                WriteVoice(xml, score, lane, measureNotes, marks, staff, part.Staves.Count > 1, voice, start, end);
+                                WriteVoice(xml, score, lane, measureNotes, marks, tiedFrom, staff, part.Staves.Count > 1, voice, start, end);
                             }
                         }
                         xml.WriteEndElement();
@@ -283,54 +287,54 @@ namespace ValeScore
         }
 
         private static void WriteVoice(XmlWriter xml, Score score, List<Note> lane, Note[] measureNotes,
-            HashSet<Guid> marks, int staff, bool piano, int voice, int start, int end)
+            HashSet<Guid> marks, HashSet<Guid> tiedFrom, int staff, bool piano, int voice, int start, int end)
         {
             string stem = measureNotes.Select(n => n.Voice).Distinct().Count() > 1 ? (voice == 0 ? "up" : "down") : null;
-        int cursor = start;
-        var previous = lane.LastOrDefault(n => n.Voice == voice && n.Tick < start && !n.IsRest);
-        var onsets = measureNotes.Where(n => n.Voice == voice).GroupBy(n => n.Tick).ToArray();
-        var events = onsets.Select(group => group.First()).ToArray();
-        int groupStart = 0, groupEnd = 0;
-        for (int i = 0; i < events.Length; i++)
-        {
-            var note = events[i];
-            if (i >= groupEnd)
+            int cursor = start;
+            var previous = lane.LastOrDefault(n => n.Voice == voice && n.Tick < start && !n.IsRest);
+            var onsets = measureNotes.Where(n => n.Voice == voice).GroupBy(n => n.Tick).ToArray();
+            var events = onsets.Select(group => group.First()).ToArray();
+            int groupStart = 0, groupEnd = 0;
+            for (int i = 0; i < events.Length; i++)
             {
-                groupStart = i;
-                groupEnd = Score.BeamGroupEnd(events, i, start, score.BeatTicks);
-                for (int j = i; j < groupEnd; j++)
-                    if (onsets[j].Count() > 1) { groupEnd = Math.Max(i + 1, j); break; }
+                var note = events[i];
+                if (i >= groupEnd)
+                {
+                    groupStart = i;
+                    groupEnd = Score.BeamGroupEnd(events, i, start, score.BeatTicks);
+                    for (int j = i; j < groupEnd; j++)
+                        if (onsets[j].Count() > 1) { groupEnd = Math.Max(i + 1, j); break; }
+                }
+                while (cursor < note.Tick)
+                {
+                    int rest = Score.RestLength(cursor - start, note.Tick - cursor, score.BeatTicks);
+                    WriteNote(xml, null, rest, staff, piano, voice: voice);
+                    cursor += rest;
+                }
+                string beam = groupEnd - groupStart < 2 ? null : i == groupStart ? "begin" : i == groupEnd - 1 ? "end" : "continue";
+                var members = onsets[i];
+                var chordMark = members.Select(n => n.Chord).FirstOrDefault(mark => mark != null);
+                var dynamic = members.Select(n => n.Dynamic).FirstOrDefault(mark => mark != null);
+                ChordSymbol chord;
+                if (ChordSymbol.TryParse(chordMark, out chord)) chord.Write(xml, staff, piano);
+                if (dynamic != null) WriteDynamic(xml, dynamic, staff, piano, voice);
+                foreach (var member in members)
+                {
+                    bool extra = member != note;
+                    WriteNote(xml, member, member.Length, staff, piano,
+                        previous != null && previous.HyphenAfter, extra ? null : beam,
+                        showAccidental: marks.Contains(member.Id), chordMember: extra, voice: voice, stem: stem, tieStop: tiedFrom.Contains(member.Id));
+                }
+                if (!note.IsRest) previous = members.FirstOrDefault(n => n.Lyric != null) ?? note;
+                cursor += note.Length;
             }
-            while (cursor < note.Tick)
+            while (cursor < end)
             {
-                int rest = Score.RestLength(cursor - start, note.Tick - cursor, score.BeatTicks);
-                WriteNote(xml, null, rest, staff, piano, voice: voice);
+                bool entireBar = cursor == start;
+                int rest = entireBar ? score.BarTicks : Score.RestLength(cursor - start, end - cursor, score.BeatTicks);
+                WriteNote(xml, null, rest, staff, piano, fullMeasure: entireBar, voice: voice);
                 cursor += rest;
             }
-            string beam = groupEnd - groupStart < 2 ? null : i == groupStart ? "begin" : i == groupEnd - 1 ? "end" : "continue";
-            var members = onsets[i];
-            var chordMark = members.Select(n => n.Chord).FirstOrDefault(mark => mark != null);
-            var dynamic = members.Select(n => n.Dynamic).FirstOrDefault(mark => mark != null);
-            ChordSymbol chord;
-            if (ChordSymbol.TryParse(chordMark, out chord)) chord.Write(xml, staff, piano);
-            if (dynamic != null) WriteDynamic(xml, dynamic, staff, piano, voice);
-            foreach (var member in members)
-            {
-                bool extra = member != note;
-                WriteNote(xml, member, member.Length, staff, piano,
-                    previous != null && previous.HyphenAfter, extra ? null : beam,
-                    showAccidental: marks.Contains(member.Id), chordMember: extra, voice: voice, stem: stem);
-            }
-            if (!note.IsRest) previous = members.FirstOrDefault(n => n.Lyric != null) ?? note;
-            cursor += note.Length;
-        }
-        while (cursor < end)
-        {
-            bool entireBar = cursor == start;
-            int rest = entireBar ? score.BarTicks : Score.RestLength(cursor - start, end - cursor, score.BeatTicks);
-            WriteNote(xml, null, rest, staff, piano, fullMeasure: entireBar, voice: voice);
-            cursor += rest;
-        }
         }
 
         private static void WriteDynamic(XmlWriter xml, string marking, int staff, bool piano, int voice)
@@ -350,8 +354,15 @@ namespace ValeScore
             xml.WriteEndElement();
         }
 
+        private static void WriteTie(XmlWriter xml, string element, string type)
+        {
+            xml.WriteStartElement(element);
+            xml.WriteAttributeString("type", type);
+            xml.WriteEndElement();
+        }
+
         private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano,
-            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false, bool chordMember = false, int voice = 0, string stem = null)
+            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false, bool chordMember = false, int voice = 0, string stem = null, bool tieStop = false)
         {
             xml.WriteStartElement("note");
             if (chordMember) xml.WriteElementString("chord", "");
@@ -370,6 +381,9 @@ namespace ValeScore
                 xml.WriteEndElement();
             }
             xml.WriteElementString("duration", length.ToString());
+            bool tieStart = note != null && note.TiedTo.HasValue;
+            if (tieStop) WriteTie(xml, "tie", "stop");
+            if (tieStart) WriteTie(xml, "tie", "start");
             xml.WriteElementString("voice", (staff + 1 + voice * 2).ToString());
             if (!fullMeasure) xml.WriteElementString("type", new[] { "whole", "half", "quarter", "eighth", "16th" }[Array.IndexOf(Score.Durations, Score.BaseDuration(length))]);
             for (int i = 0; !fullMeasure && i < Score.DotCount(length); i++) xml.WriteElementString("dot", "");
@@ -398,12 +412,17 @@ namespace ValeScore
                     xml.WriteEndElement();
                 }
             }
-            if (note != null && note.Articulation != null)
+            if (tieStart || tieStop || (note != null && note.Articulation != null))
             {
                 xml.WriteStartElement("notations");
-                xml.WriteStartElement("articulations");
-                xml.WriteElementString(note.Articulation, "");
-                xml.WriteEndElement();
+                if (tieStop) WriteTie(xml, "tied", "stop");
+                if (tieStart) WriteTie(xml, "tied", "start");
+                if (note.Articulation != null)
+                {
+                    xml.WriteStartElement("articulations");
+                    xml.WriteElementString(note.Articulation, "");
+                    xml.WriteEndElement();
+                }
                 xml.WriteEndElement();
             }
             if (note != null && !note.IsRest && note.Lyric != null)

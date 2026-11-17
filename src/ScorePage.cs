@@ -253,6 +253,7 @@ namespace ValeScore
                                 DrawMeasure(g, ink, accent, line, measure, lane, staff, y, score, laneSelected ? selected : null, playing);
                             }
 
+                            DrawTies(g, layout, lane, first, after, y, staff, score.BarTicks, ink, accent, laneSelected ? selected : null);
                             DrawLyrics(g, layout, lane, first, after, y, score.BarTicks, ink, center);
                             foreach (var item in lane.Where(n => n.Tick >= first * score.BarTicks && n.Tick < after * score.BarTicks))
                             {
@@ -295,6 +296,45 @@ namespace ValeScore
                 }
                 g.DrawString((page + 1).ToString(), small, ink, new RectangleF(0, layout.Height - 38, layout.Width, 24), center);
             }
+        }
+
+        private static void DrawTies(Graphics g, ScoreLayout layout, List<Note> lane, int first, int after,
+            int top, int staff, int barTicks, Brush ink, Brush accent, StaffPosition selection)
+        {
+            int start = first * barTicks, end = after * barTicks;
+            var starts = lane.Where(n => n.TiedTo.HasValue && n.Tick < end && n.Tick + n.Length >= start).ToArray();
+            if (starts.Length == 0) return;
+            var notes = lane.ToDictionary(n => n.Id);
+            foreach (var source in starts)
+            {
+                Note target;
+                if (!NoteTies.TryTarget(source, notes, out target)) continue;
+                int sourceSide = 0, targetSide = 0;
+                float x1 = source.Tick < start ? layout.MeasureOf(first).Left + 3 :
+                    TiePosition(layout, lane, source, staff, barTicks, out sourceSide);
+                float x2 = target.Tick >= end ? layout.MeasureOf(after - 1).Right - 2 :
+                    TiePosition(layout, lane, target, staff, barTicks, out targetSide);
+                if (x2 <= x1 + 2) continue;
+                float pad = Math.Min(6, (x2 - x1) * .23f);
+                int side = sourceSide != 0 ? sourceSide : targetSide;
+                float y = NoteY(top, staff, source) + side * 5;
+                var brush = IsSelected(source, selection) || IsSelected(target, selection) ? accent : ink;
+                MusicGlyphs.Tie(g, brush, x1 + (sourceSide == 0 ? 0 : pad),
+                    x2 - (targetSide == 0 ? 0 : pad), y, side);
+            }
+        }
+
+        private static float TiePosition(ScoreLayout layout, List<Note> lane, Note note, int staff, int barTicks, out int side)
+        {
+            int bar = note.Tick / barTicks;
+            var notes = lane.Where(n => n.Tick / barTicks == bar).ToArray();
+            var chord = notes.Where(n => !n.IsRest && n.Tick == note.Tick && n.Voice == note.Voice)
+                .OrderBy(n => n.Step).ToArray();
+            int index = Array.IndexOf(chord, note);
+            bool polyphonic = HasBothVoices(notes);
+            int stem = polyphonic ? VoiceDirection(note.Voice) : StemDirection(chord, staff);
+            side = polyphonic ? stem : chord.Length == 1 ? -stem : index < chord.Length / 2 ? 1 : -1;
+            return EventX(layout.MeasureOf(bar), note, SharedOnsets(notes)) + ChordOffsets(chord, stem)[index];
         }
 
         private static void DrawLyrics(Graphics g, ScoreLayout layout, List<Note> lane, int first, int after, int y, int barTicks, Brush ink, StringFormat center)

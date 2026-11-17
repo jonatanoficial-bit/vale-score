@@ -40,7 +40,7 @@ namespace ValeScore
         private readonly List<Button> durationButtons = new List<Button>();
         private readonly List<Button> restButtons = new List<Button>();
         private readonly List<Button> accidentalButtons = new List<Button>();
-        private readonly Button dotButton, doubleDotButton;
+        private readonly Button dotButton, doubleDotButton, tieButton;
         private readonly Dictionary<EditMode, Button> modeButtons = new Dictionary<EditMode, Button>();
         private readonly ToolTip figureTips = new ToolTip();
         private readonly ComboBox zoom = new ComboBox();
@@ -124,6 +124,7 @@ namespace ValeScore
             Item(edit, "Desfazer", Keys.Control | Keys.Z, () => History(undo, redo));
             Item(edit, "Refazer", Keys.Control | Keys.Y, () => History(redo, undo));
             Item(edit, "Alternar voz da pauta", Keys.None, ToggleVoice).ShortcutKeyDisplayString = "Shift+V";
+            Item(edit, "Ligadura de prolongamento", Keys.None, ToggleTie).ShortcutKeyDisplayString = "Shift+T";
             Item(edit, "Escrever acorde", Keys.None, () => SetMode(EditMode.Chord)).ShortcutKeyDisplayString = "K";
             Item(edit, "Editar letra da nota", Keys.None, StartLyrics).ShortcutKeyDisplayString = "Shift+L";
             Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
@@ -164,6 +165,7 @@ namespace ValeScore
                 "No modo Notas, A S D F G H J inserem Dó a Si. Enter insere a altura do cursor.\n" +
                 "K abre Acordes. Shift+V alterna a voz da pauta. Alt+↓ percorre as notas do acorde na seleção.\n" +
                 "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
+                "Shift+T liga à próxima nota de mesma altura e voz. Repita para remover.\n" +
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
@@ -310,6 +312,9 @@ namespace ValeScore
             });
             AddMusicButton(dots, (MusicButton)dotButton, "Ponto de aumento (.)", () => ApplyDots(1));
             AddMusicButton(dots, (MusicButton)doubleDotButton, "Dois pontos de aumento", () => ApplyDots(2));
+            var signs = AddPaletteGroup("SINAIS", 1);
+            tieButton = new MusicButton((g, ink) => MusicGlyphs.Tie(g, ink, -11, 11, 1, -1));
+            AddMusicButton(signs, (MusicButton)tieButton, "Ligadura de prolongamento (Shift+T)", ToggleTie);
             Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); recoveryTimer.Dispose(); };
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
@@ -780,6 +785,16 @@ namespace ValeScore
             }
         }
 
+        private void ToggleTie()
+        {
+            if (!CommitLyric()) return;
+            var note = SelectedNote();
+            if (note == null) { Report("Selecione a nota que inicia a ligadura."); return; }
+            bool enabled = false;
+            if (Change(() => enabled = score.ToggleTie(position.Part, position.Staff, note.Id)))
+                Report(enabled ? "Ligadura de prolongamento inserida" : "Ligadura de prolongamento removida");
+        }
+
         private void ChangeArticulation(string mark)
         {
             if (!CommitLyric()) return;
@@ -999,6 +1014,7 @@ namespace ValeScore
             try
             {
                 action();
+                score.PruneTies();
                 score.Validate();
                 changed = !before.SequenceEqual(score.Snapshot());
                 if (changed)
@@ -1052,6 +1068,7 @@ namespace ValeScore
             }
             dotButton.BackColor = Score.DotCount(active) == 1 ? Accent : PanelColor;
             doubleDotButton.BackColor = Score.DotCount(active) == 2 ? Accent : PanelColor;
+            tieButton.BackColor = selected != null && selected.TiedTo.HasValue ? Accent : PanelColor;
             int? accidental = showingSelection && !selected.IsRest ? (int?)selected.Alter : inputAlter;
             for (int i = 0; i < accidentalButtons.Count; i++)
                 accidentalButtons[i].BackColor = !rest && i == accidental + 1 ? Accent : PanelColor;
@@ -1357,6 +1374,7 @@ namespace ValeScore
                 return base.ProcessCmdKey(ref msg, key);
             }
             if (editingLyric) return HandleLyricKey(key) || base.ProcessCmdKey(ref msg, key);
+            if (key == (Keys.Shift | Keys.T)) { ToggleTie(); return true; }
             if (key == (Keys.Shift | Keys.L)) { StartLyrics(); return true; }
             if (ActiveControl is ComboBox || ActiveControl == tracks) return base.ProcessCmdKey(ref msg, key);
             if (key == Keys.Space) { Play(); return true; }

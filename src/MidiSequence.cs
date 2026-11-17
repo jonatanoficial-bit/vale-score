@@ -249,15 +249,21 @@ namespace ValeScore
 
                     // Some synths stop every instance of a pitch on note-off. Merge overlapping
                     // instances of the same pitch on a channel while retaining adjacent attacks.
-                    var attacks = new List<Tuple<Note, int>>();
+                    var attacks = new List<Tuple<Note, int, double>>();
                     foreach (var staff in part.Staves)
                     {
+                        var lengths = NoteTies.AttackLengths(staff);
                         var loudness = new[] { 88, 88 };
                         foreach (var onset in staff.Where(n => !n.IsRest).GroupBy(n => new { n.Tick, n.Voice }))
                         {
                             string marking = onset.Select(n => n.Dynamic).FirstOrDefault(value => value != null);
                             if (marking != null) loudness[onset.Key.Voice] = Score.Velocity(marking);
-                            foreach (var note in onset) attacks.Add(Tuple.Create(note, loudness[note.Voice]));
+                            foreach (var note in onset)
+                            {
+                                double length;
+                                if (lengths.TryGetValue(note.Id, out length))
+                                    attacks.Add(Tuple.Create(note, loudness[note.Voice], length));
+                            }
                         }
                     }
                     foreach (var group in attacks.GroupBy(n => n.Item1.Midi))
@@ -267,7 +273,7 @@ namespace ValeScore
                         {
                             var note = attack.Item1;
                             int onset = note.Tick * 120;
-                            int release = onset + (int)Math.Round(note.Length * 120 * Articulations.SoundLength(note.Articulation));
+                            int release = onset + (int)Math.Round(attack.Item3 * 120);
                             if (onset < end) { end = Math.Max(end, release); continue; }
                             if (start >= 0) AddPitch(data, channel, group.Key, start, end, velocity);
                             start = onset;

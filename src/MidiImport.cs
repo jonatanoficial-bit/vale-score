@@ -65,7 +65,7 @@ namespace ValeScore
             var report = new List<string> {
                 result.Imported + " notas convertidas em " + project.Parts.Count + " conjunto(s) de pautas.",
                 result.Quantized + " notas ajustadas à grade de semicolcheias.",
-                result.Split + " notas divididas em figuras. Os segmentos são rearticulados.",
+                result.Split + " notas divididas em figuras unidas por ligaduras de prolongamento.",
                 result.Skipped + " notas omitidas por limites de pauta, extensão, duração, percussão ou pares MIDI incompletos.",
                 "A grafia das notas segue a armadura inicial quando possível. Timbres, dinâmica e pedal pertencem ao MIDI original."
             };
@@ -157,10 +157,13 @@ namespace ValeScore
         private static void Write(Score score, int part, int staff, int start, int end, int step, int alter, MidiImport result, int voice = 0)
         {
             int count = 0;
+            Note previous = null;
             for (int tick = start; tick < end; count++)
             {
                 int length = SegmentLength(score, tick, end);
-                score.AddChordNote(part, staff, tick, length, step, alter, voice);
+                var note = score.AddChordNote(part, staff, tick, length, step, alter, voice);
+                if (previous != null) previous.TiedTo = note.Id;
+                previous = note;
                 tick += length;
             }
             if (count > 1) result.Split++;

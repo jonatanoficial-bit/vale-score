@@ -163,6 +163,7 @@ namespace ValeScore
             int divisions = 1, bar = 0;
             int barTicks = result.Project.BarTicks;
             var voices = Enumerable.Range(0, staves).Select(i => new List<string>()).ToArray();
+            var ties = new Dictionary<Tuple<int, int, int, int>, Note>();
             foreach (var measure in source.Elements("measure"))
             {
                 double cursor = 0, previous = 0;
@@ -295,6 +296,7 @@ namespace ValeScore
                             (string)accidental.Attribute("parentheses") == "yes"))
                             result.Project.SetCourtesy(part, staff, at, true, added.Id);
                         result.Notes++;
+                        ReadTie(child, added, staff, ties, result);
                         var marksOnNote = child.Elements("notations").Elements("articulations").Elements().ToArray();
                         var articulation = marksOnNote.FirstOrDefault(e => Articulations.XmlNames.Contains(e.Name.LocalName));
                         if (articulation != null) result.Project.SetArticulation(part, staff, at, articulation.Name.LocalName, added.Id);
@@ -331,6 +333,27 @@ namespace ValeScore
                 }
                 result.Omitted += chords.Count - usedChords.Count + dynamics.Count - usedDynamics.Count;
                 bar++;
+            }
+            result.Omitted += ties.Count;
+        }
+
+        private static void ReadTie(XElement element, Note note, int staff,
+            Dictionary<Tuple<int, int, int, int>, Note> open, MusicXmlImport result)
+        {
+            var types = element.Elements("tie").Concat(element.Elements("notations").Elements("tied"))
+                .Select(tie => (string)tie.Attribute("type")).ToArray();
+            var key = Tuple.Create(staff, note.Voice, note.Step, note.Alter);
+            if (types.Contains("stop") || types.Contains("continue"))
+            {
+                Note source;
+                if (open.TryGetValue(key, out source) && NoteTies.Fits(source, note)) source.TiedTo = note.Id;
+                else result.Omitted++;
+                open.Remove(key);
+            }
+            if (types.Contains("start") || types.Contains("continue"))
+            {
+                if (open.ContainsKey(key)) result.Omitted++;
+                open[key] = note;
             }
         }
 

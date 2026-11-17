@@ -31,6 +31,105 @@ internal static class Smoke
         catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     }
 
+    private static void TieChecks(string directory)
+    {
+        var score = Score.New(false);
+        var start = score.AddChordNote(0, 0, 12, 4, 32, 0, voice: 1);
+        score.Put(0, 0, 16, 8, 32, 0);
+        var middle = score.AddChordNote(0, 0, 16, 8, 32, 0, voice: 1);
+        var end = score.AddChordNote(0, 0, 24, 4, 32, 0, voice: 1);
+        score.Put(0, 0, 28, 4, 32, 0, voice: 1);
+        Assert(score.ToggleTie(0, 0, start.Id) && start.TiedTo == middle.Id &&
+            score.ToggleTie(0, 0, middle.Id) && middle.TiedTo == end.Id,
+            "Ligaduras atravessam a barra e permanecem na voz e altura selecionadas");
+        string saved = Path.Combine(directory, "ligaduras.valescore");
+        score.Save(saved);
+        var reopened = Score.Open(saved);
+        Assert(reopened.Parts[0].Staves[0].Count(n => n.TiedTo.HasValue) == 2,
+            "Salvamento e reabertura preservam a cadeia de ligaduras");
+
+        var before = score.ExtractBars(0, 0);
+        var after = score.ExtractBars(1, 1);
+        Assert(!before.Parts[0].Staves[0].Any(n => n.TiedTo.HasValue) &&
+            after.Parts[0].Staves[0].Count(n => n.TiedTo.HasValue) == 1,
+            "Recorte descarta ligaduras cortadas na borda e conserva as internas");
+        reopened.PasteBar(2, score.CopyBar(1));
+        reopened.DuplicateBar(1);
+        var lane = reopened.Parts[0].Staves[0];
+        Assert(lane.Where(n => n.TiedTo.HasValue).All(n => lane.Any(t => t.Id == n.TiedTo &&
+            n.Tick + n.Length == t.Tick)) && lane.Count(n => n.TiedTo.HasValue) == 4,
+            "Cópia e duplicação ligam as novas identidades no compasso de destino");
+        var edited = Score.Restore(score.Snapshot());
+        var note = edited.Parts[0].Staves[0].Single(n => n.Id == middle.Id);
+        edited.EditNote(0, 0, note, 8, 33, 0);
+        Assert(!edited.Parts[0].Staves[0].Any(n => n.TiedTo.HasValue), "Mudar a altura de uma continuação solta as ligaduras incompatíveis");
+
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(score, xml);
+            xml.Position = 0;
+            var doc = XDocument.Load(xml);
+            Assert(doc.Descendants("tie").Count() == 4 && doc.Descendants("tied").Count() == 4,
+                "MusicXML exporta ligaduras para som e gravação musical");
+            xml.Position = 0;
+            var parsed = MusicXmlImport.Read(xml, "Ligaduras");
+            Assert(parsed.Omitted == 0 && parsed.Project.Parts[0].Staves[0].Count(n => n.TiedTo.HasValue) == 2,
+                "MusicXML reimporta a cadeia e preserva a distinção entre vozes");
+            doc.Descendants("tie").Remove();
+            using (var engraving = new MemoryStream())
+            {
+                doc.Save(engraving);
+                engraving.Position = 0;
+                Assert(MusicXmlImport.Read(engraving, "Ligaduras").Project.Parts[0].Staves[0].Count(n => n.TiedTo.HasValue) == 2,
+                    "Importação aceita ligaduras MusicXML marcadas em notations");
+            }
+        }
+        var playback = Score.Restore(score.Snapshot());
+        playback.Parts[0].Staves[0].RemoveAll(n => n.Voice == 0);
+        using (var midi = new MemoryStream())
+        {
+            MidiSequence.Export(playback, midi);
+            midi.Position = 0;
+            var sequence = MidiSequence.Read(midi);
+            var attacks = sequence.Events.Where(e => (e.Status & 0xF0) == 0x90 && e.Data2 != 0).Select(e => e.Tick);
+            Assert(attacks.SequenceEqual(new long[] { 1440, 3360 }) &&
+                sequence.Events.Any(e => (e.Status & 0xF0) == 0x80 && e.Tick == 3360),
+                "MIDI toca a cadeia como uma única nota e rearticula a próxima figura independente");
+            var converted = MidiImport.Convert(sequence, "Ligaduras");
+            Assert(converted.Project.Parts[0].Staves[0].Any(n => n.TiedTo.HasValue),
+                "MIDI recria ligaduras quando uma nota sustentada precisa atravessar a barra");
+        }
+        var untied = Score.Restore(playback.Snapshot());
+        foreach (var n in untied.Parts[0].Staves[0]) n.TiedTo = null;
+        using (var sustained = Output.Wave(playback))
+        using (var repeated = Output.Wave(untied))
+        {
+            int boundary = 44 + 2 * (int)Math.Round(16 * Output.SampleRate * 15.0 / score.Tempo);
+            var tail = sustained.ToArray().Skip(boundary).Take(128);
+            Assert(!tail.SequenceEqual(repeated.ToArray().Skip(boundary).Take(128)),
+                "WAV preserva a fase e a sustentação na passagem entre notas ligadas");
+        }
+
+        var drawing = Score.New(false);
+        var layout = new ScoreLayout(drawing);
+        int breakTick = (layout.OnPage(0).First().Last().Index + 1) * drawing.BarTicks;
+        var first = drawing.AddChordNote(0, 0, breakTick - 4, 4, 32, 0);
+        drawing.Put(0, 0, breakTick, 4, 32, 0);
+        drawing.ToggleTie(0, 0, first.Id);
+        using (var linked = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var plain = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var a = Graphics.FromImage(linked))
+        using (var b = Graphics.FromImage(plain))
+        {
+            ScorePage.Draw(a, drawing, 0, null, -1);
+            drawing.ToggleTie(0, 0, first.Id);
+            ScorePage.Draw(b, drawing, 0, null, -1);
+            Func<int, bool> containsArc = top => Enumerable.Range(top + 33, 14).Any(y =>
+                Enumerable.Range(0, linked.Width).Any(x => linked.GetPixel(x, y) != plain.GetPixel(x, y)));
+            Assert(containsArc(layout.StaffTop(0, 0)) && containsArc(layout.StaffTop(1, 0)), "Gravação desenha a ligadura nos dois sistemas na quebra de linha");
+        }
+    }
+
     private static void VoiceChecks(string directory)
     {
         var legacy = Score.New(false);
@@ -178,6 +277,7 @@ internal static class Smoke
 
     private static void Run(string directory)
     {
+        TieChecks(directory);
         VoiceChecks(directory);
         ChordChecks(directory);
         var score = Score.New(true);
@@ -907,6 +1007,20 @@ internal static class Smoke
             key(Keys.Delete);
             Assert(sheet.Music.Parts[0].Staves[0].Count == 1 && first().Voice == 0,
                 "Apagar na segunda voz preserva a primeira");
+            var tieScore = Score.New(false);
+            tieScore.Put(0, 0, 0, 4, 28, 0);
+            tieScore.Put(0, 0, 4, 4, 28, 0);
+            type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { tieScore, null });
+            var tieButton = Descendants(editor).OfType<Button>().Single(b => b.AccessibleName == "Ligadura de prolongamento (Shift+T)");
+            tieButton.PerformClick();
+            Assert(first().TiedTo.HasValue, "Símbolo de ligadura na paleta une duas notas");
+            key(Keys.Shift | Keys.T);
+            Assert(!first().TiedTo.HasValue, "Atalho Shift+T remove a ligadura selecionada");
+            ((Button)undo.GetValue(editor)).PerformClick();
+            Assert(first().TiedTo.HasValue, "Desfazer recupera a ligadura");
+            key(Keys.Right);
+            key(Keys.Delete);
+            Assert(!first().TiedTo.HasValue, "Apagar a nota de destino remove a ligadura pendente");
             type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(true), null });
             editor.Close();
         }

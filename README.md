@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.17.0 · Prévia para Windows x64**
+**0.18.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.17.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.17.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.18.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.18.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -33,6 +33,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.18
+
+- Escreva duas figuras consecutivas de mesma altura na mesma voz. Selecione a primeira e clique no arco em **Sinais** ou pressione **Shift+T**. Repita para desfazer a ligadura.
+- A ligadura vale dentro do compasso, através da barra e em quebras de sistema. Em acordes, aplique o sinal individualmente às notas que devem sustentar.
+- O som interno e as exportações WAV e MIDI sustentam a cadeia sem novo ataque. MusicXML/MXL preserva o sinal. Na importação MIDI, notas longas divididas pela grade ganham ligaduras.
+- Abra **Valsa da tarde** para ouvir a ligadura entre os compassos 2 e 3 na segunda voz.
 
 ## Novidades da 0.17
 

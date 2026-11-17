@@ -6,6 +6,19 @@ namespace ValeScore
 {
     internal static class MusicGlyphs
     {
+        public static void Tie(Graphics g, Brush ink, float start, float end, float y, int side)
+        {
+            float width = end - start;
+            float rise = side * Math.Min(11, 2.8f + width * .10f);
+            using (var path = new GraphicsPath())
+            {
+                path.AddBezier(start, y, start + width * .25f, y + rise, end - width * .25f, y + rise, end, y);
+                path.AddBezier(end, y, end - width * .25f, y + rise - side * 2, start + width * .25f, y + rise - side * 2, start, y);
+                path.CloseFigure();
+                g.FillPath(ink, path);
+            }
+        }
+
         public static void Head(Graphics g, Brush ink, float x, float y, int length)
         {
             using (var head = new GraphicsPath(FillMode.Alternate))

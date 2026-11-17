@@ -23,6 +23,7 @@ namespace ValeScore
         [DataMember(EmitDefaultValue = false)] public string Dynamic;
         [DataMember(EmitDefaultValue = false)] public string Articulation;
         [DataMember(EmitDefaultValue = false)] public bool IsRest;
+        [DataMember(EmitDefaultValue = false)] public Guid? TiedTo;
 
         public int Midi
         {
@@ -63,9 +64,10 @@ namespace ValeScore
             foreach (var note in notes) note.Tick = note.Tick / oldSize * newSize + note.Tick % oldSize;
             Beats = beats;
             BeatType = beatType;
+            PruneTies();
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 10;
+        public const int CurrentVersion = 11;
         public const int VoicesPerStaff = 2;
         public const int MaxChordNotes = 8;
         private const int MaxProjectBytes = 48 * 1024 * 1024;
@@ -99,6 +101,7 @@ namespace ValeScore
             if (alter < -2 || alter > 2 || Parts[part].Staves[staff].Any(n => n != note && n.Voice == note.Voice && n.Tick == tick && n.Step == step)) return false;
             note.Step = step;
             note.Alter = alter;
+            NoteTies.Prune(Parts[part].Staves[staff]);
             return true;
         }
 
@@ -205,6 +208,7 @@ namespace ValeScore
             note.Step = step;
             note.Alter = alter;
             foreach (var member in cluster) member.Length = length;
+            NoteTies.Prune(lane);
         }
 
         private void PutEvent(int part, int staff, Note note)
@@ -229,11 +233,35 @@ namespace ValeScore
                     note.Dynamic = previous.Dynamic;
                     note.Articulation = previous.Articulation;
                     note.Courtesy = previous.Courtesy;
+                    note.TiedTo = previous.TiedTo;
                 }
                 notes.RemoveAll(n => n.Tick == tick && n.Voice == note.Voice);
             }
             notes.Add(note);
             SortByTick(notes);
+            NoteTies.Prune(notes);
+        }
+
+        public bool ToggleTie(int part, int staff, Guid id)
+        {
+            var lane = Parts[part].Staves[staff];
+            var start = lane.Find(n => n.Id == id && !n.IsRest);
+            if (start == null) throw new InvalidOperationException("Selecione a nota que inicia a ligadura.");
+            if (start.TiedTo.HasValue)
+            {
+                start.TiedTo = null;
+                return false;
+            }
+            var next = lane.Find(n => NoteTies.Fits(start, n));
+            if (next == null)
+                throw new InvalidOperationException("Escreva a continuação com a mesma altura na mesma voz, sem intervalo entre as figuras.");
+            start.TiedTo = next.Id;
+            return true;
+        }
+
+        internal void PruneTies()
+        {
+            foreach (var lane in Parts.SelectMany(p => p.Staves)) NoteTies.Prune(lane);
         }
 
         public void SetExpression(int part, int staff, int tick, string chord, string dynamic, Guid id = default(Guid))
@@ -282,7 +310,7 @@ namespace ValeScore
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 || n.Voice < 0 || n.Voice >= VoicesPerStaff ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
             if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter &&
-                n.Chord == null && n.Dynamic == null && n.Articulation == null && !n.Courtesy;
+                n.Chord == null && n.Dynamic == null && n.Articulation == null && !n.Courtesy && !n.TiedTo.HasValue;
             ChordSymbol symbol;
             if ((n.Chord != null && !ChordSymbol.TryParse(n.Chord, out symbol)) ||
                 (n.Dynamic != null && !Dynamics.Contains(n.Dynamic)) ||
@@ -328,6 +356,7 @@ namespace ValeScore
             foreach (var note in Parts.SelectMany(p => p.Staves).SelectMany(staff => staff))
                 if (note.Tick >= bar * BarTicks) note.Tick += BarTicks;
             Bars++;
+            PruneTies();
         }
 
         public void RemoveBar(int bar)
@@ -342,6 +371,7 @@ namespace ValeScore
                     if (note.Tick >= end) note.Tick -= BarTicks;
             }
             Bars--;
+            PruneTies();
         }
 
         public int Transpose(int startBar, int endBar, int? partIndex, int amount, bool chromatic)
@@ -391,6 +421,7 @@ namespace ValeScore
                 change.Item1.Alter = change.Item3;
                 change.Item1.Chord = change.Item4;
             }
+            PruneTies();
             return changes.Count;
         }
 
@@ -402,17 +433,31 @@ namespace ValeScore
             int end = start + BarTicks;
             foreach (var staff in Parts.SelectMany(p => p.Staves))
             {
-                var copies = staff.Where(n => n.Tick >= start && n.Tick < end).Select(n => new Note
-                {
-                    Tick = n.Tick + BarTicks, Length = n.Length, Step = n.Step, Alter = n.Alter, Voice = n.Voice,
-                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
-                    Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy
-                }).ToArray();
+                var copies = CloneNotes(staff.Where(n => n.Tick >= start && n.Tick < end), BarTicks);
                 foreach (var note in staff.Where(n => n.Tick >= end)) note.Tick += BarTicks;
                 staff.AddRange(copies);
                 SortByTick(staff);
             }
             Bars++;
+            PruneTies();
+        }
+
+        private static IEnumerable<Note> CloneNotes(IEnumerable<Note> notes, int delta)
+        {
+            var source = notes.ToArray();
+            var copies = source.ToDictionary(n => n.Id, n => new Note
+            {
+                Tick = n.Tick + delta, Length = n.Length, Step = n.Step, Alter = n.Alter, Voice = n.Voice,
+                IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
+                Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy, TiedTo = n.TiedTo
+            });
+            foreach (var copy in copies.Values)
+            {
+                Note target;
+                copy.TiedTo = copy.TiedTo.HasValue && copies.TryGetValue(copy.TiedTo.Value, out target)
+                    ? target.Id : (Guid?)null;
+            }
+            return source.Select(n => copies[n.Id]);
         }
 
         private static void SortByTick(List<Note> lane)
@@ -432,6 +477,7 @@ namespace ValeScore
                 staff.RemoveAll(n => n.Tick < start || n.Tick >= start + BarTicks);
                 foreach (var note in staff) note.Tick -= start;
             }
+            copy.PruneTies();
             copy.Bars = 1;
             return copy;
         }
@@ -449,13 +495,9 @@ namespace ValeScore
             {
                 var staff = targets[i];
                 staff.RemoveAll(n => n.Tick >= start && n.Tick < start + BarTicks);
-                staff.AddRange(sources[i].Select(n => new Note
-                {
-                    Tick = start + n.Tick, Length = n.Length, Step = n.Step, Alter = n.Alter, Voice = n.Voice,
-                    IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
-                    Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy
-                }));
+                staff.AddRange(CloneNotes(sources[i], start));
                 SortByTick(staff);
+                NoteTies.Prune(staff);
             }
         }
 
@@ -505,6 +547,7 @@ namespace ValeScore
                 staff.RemoveAll(n => n.Tick < start || n.Tick >= end);
                 foreach (var note in staff) note.Tick -= start;
             }
+            copy.PruneTies();
             copy.Bars = last - first + 1;
             return copy;
         }
@@ -568,6 +611,16 @@ namespace ValeScore
                             !ValidLyric(n.Lyric) || (n.Lyric == null && n.HyphenAfter))
                             throw new InvalidDataException("Nota ou ritmo inválido no projeto.");
                         lastTick = n.Tick;
+                    }
+                    if (lane.Any(n => n.TiedTo.HasValue))
+                    {
+                        var notes = lane.ToDictionary(n => n.Id);
+                        foreach (var source in lane.Where(n => n.TiedTo.HasValue))
+                        {
+                            Note target;
+                            if (!NoteTies.TryTarget(source, notes, out target))
+                                throw new InvalidDataException("Ligadura de prolongamento inválida.");
+                        }
                     }
                     foreach (var voice in lane.GroupBy(n => n.Voice))
                     {
