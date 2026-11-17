@@ -24,7 +24,7 @@ namespace ValeScore
         public ScoreLayout Engraving { get; private set; }
         public int Page;
         public int Playing = -1;
-        public StaffPosition Selection, Hover;
+        public StaffPosition Selection, Hover, SlurAnchor;
         public bool ShowEntryPreview;
         public bool PreviewRest, PreviewChord;
         public int PreviewLength = 4, PreviewVoice;
@@ -67,6 +67,23 @@ namespace ValeScore
             e.Graphics.ScaleTransform(Zoom, Zoom);
             Draw(e.Graphics, Music, Engraving, Page, Selection, Playing, ShowEntryPreview ? Hover : null,
                 PreviewLength, PreviewRest, PreviewAlter, PreviewChord, PreviewVoice);
+            DrawSlurAnchor(e.Graphics);
+        }
+
+        private void DrawSlurAnchor(Graphics g)
+        {
+            if (SlurAnchor == null || SlurAnchor.Part >= Music.Parts.Count) return;
+            var part = Music.Parts[SlurAnchor.Part];
+            if (SlurAnchor.Staff >= part.Staves.Count) return;
+            var lane = part.Staves[SlurAnchor.Staff];
+            var start = lane.Find(n => n.Id == SlurAnchor.NoteId && !n.IsRest);
+            if (start == null || Engraving.PageOf(start.Tick) != Page) return;
+            var anchor = new StaffPosition { Part = SlurAnchor.Part, Staff = SlurAnchor.Staff, Tick = start.Tick };
+            int top = (int)Engraving.Position(Music, anchor).Y;
+            int side;
+            float x = TiePosition(Engraving, lane, start, anchor.Staff, Music.BarTicks, out side);
+            float y = NoteY(top, anchor.Staff, start);
+            using (var outline = new Pen(Accent, 1.4f)) g.DrawEllipse(outline, x - 10, y - 9, 20, 18);
         }
 
         protected override void OnMouseDown(MouseEventArgs e)
@@ -254,6 +271,7 @@ namespace ValeScore
                             }
 
                             DrawTies(g, layout, lane, first, after, y, staff, score.BarTicks, ink, accent, laneSelected ? selected : null);
+                            DrawSlurs(g, layout, lane, first, after, y, staff, score.BarTicks, ink, accent, laneSelected ? selected : null);
                             DrawLyrics(g, layout, lane, first, after, y, score.BarTicks, ink, center);
                             foreach (var item in lane.Where(n => n.Tick >= first * score.BarTicks && n.Tick < after * score.BarTicks))
                             {
@@ -295,6 +313,36 @@ namespace ValeScore
                     system++;
                 }
                 g.DrawString((page + 1).ToString(), small, ink, new RectangleF(0, layout.Height - 38, layout.Width, 24), center);
+            }
+        }
+
+        private static void DrawSlurs(Graphics g, ScoreLayout layout, List<Note> lane, int first, int after,
+            int top, int staff, int barTicks, Brush ink, Brush accent, StaffPosition selection)
+        {
+            int start = first * barTicks, end = after * barTicks;
+            var slurs = NoteSlur.In(lane);
+            foreach (var slur in slurs.Where(s => s.Start.Tick < end && s.End.Tick >= start))
+            {
+                bool enters = slur.Start.Tick < start;
+                bool exits = slur.End.Tick >= end;
+                int side = VoiceDirection(slur.Start.Voice);
+                int ignored;
+                float x1 = enters ? layout.MeasureOf(first).Left + 3 :
+                    TiePosition(layout, lane, slur.Start, staff, barTicks, out ignored);
+                float x2 = exits ? layout.MeasureOf(after - 1).Right - 2 :
+                    TiePosition(layout, lane, slur.End, staff, barTicks, out ignored);
+                if (x2 <= x1 + 2) continue;
+                int depth = Math.Min(4, slurs.Count(other => other.Start.Voice == slur.Start.Voice &&
+                    other.Start.Tick >= slur.Start.Tick && other.End.Tick <= slur.End.Tick &&
+                    (other.Start.Tick > slur.Start.Tick || other.End.Tick < slur.End.Tick)));
+                var notes = lane.Where(n => !n.IsRest && n.Voice == slur.Start.Voice &&
+                    n.Tick >= Math.Max(start, slur.Start.Tick) && n.Tick <= slur.End.Tick && n.Tick < end);
+                float edge = notes.Select(n => side * NoteY(top, staff, n)).DefaultIfEmpty(side * (top + 20)).Max();
+                float baseY = side * Math.Max(edge + 11, side < 0 ? -top + 4 : top + 44) + side * depth * 4;
+                float rise = side * Math.Min(24, 7 + (x2 - x1) * .10f);
+                var color = IsSelected(slur.Start, selection) || IsSelected(slur.End, selection) ? accent : ink;
+                MusicGlyphs.Arc(g, color, x1, baseY + (enters ? rise * .4f : 0),
+                    x2, baseY + (exits ? rise * .4f : 0), rise, 2.4f);
             }
         }
 

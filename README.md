@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.18.0 · Prévia para Windows x64**
+**0.19.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.18.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.18.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.19.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.19.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -33,6 +33,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.19
+
+- Para marcar uma frase, selecione sua primeira nota e clique no segundo arco em **Sinais** ou pressione **Shift+S**. Clique na última nota da mesma voz, ou navegue até ela e pressione **Shift+S**. **Esc** cancela. Repita os mesmos extremos para remover o arco.
+- Ligaduras de expressão podem abranger alturas diferentes, atravessar compassos e continuar no sistema ou página seguinte. O Vale Score posiciona o arco automaticamente.
+- Os arcos são preservados no projeto e em MusicXML/MXL. A marcação é gráfica nesta prévia.
+- Abra **Canção ao entardecer** na Central de projetos para ver duas frases marcadas.
 
 ## Novidades da 0.18
 

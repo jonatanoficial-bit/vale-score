@@ -164,6 +164,7 @@ namespace ValeScore
             int barTicks = result.Project.BarTicks;
             var voices = Enumerable.Range(0, staves).Select(i => new List<string>()).ToArray();
             var ties = new Dictionary<Tuple<int, int, int, int>, Note>();
+            var slurs = new Dictionary<Tuple<int, int, int>, Note>();
             foreach (var measure in source.Elements("measure"))
             {
                 double cursor = 0, previous = 0;
@@ -297,6 +298,7 @@ namespace ValeScore
                             result.Project.SetCourtesy(part, staff, at, true, added.Id);
                         result.Notes++;
                         ReadTie(child, added, staff, ties, result);
+                        ReadSlurs(child, added, staff, slurs, result);
                         var marksOnNote = child.Elements("notations").Elements("articulations").Elements().ToArray();
                         var articulation = marksOnNote.FirstOrDefault(e => Articulations.XmlNames.Contains(e.Name.LocalName));
                         if (articulation != null) result.Project.SetArticulation(part, staff, at, articulation.Name.LocalName, added.Id);
@@ -334,7 +336,48 @@ namespace ValeScore
                 result.Omitted += chords.Count - usedChords.Count + dynamics.Count - usedDynamics.Count;
                 bar++;
             }
-            result.Omitted += ties.Count;
+            result.Omitted += ties.Count + slurs.Count;
+            foreach (var excess in NoteSlur.Numbered(result.Project.Parts[part], barTicks).Where(s => s.Number == 0))
+            {
+                excess.Start.SlursTo.Remove(excess.End.Id);
+                if (excess.Start.SlursTo.Count == 0) excess.Start.SlursTo = null;
+                result.Omitted++;
+            }
+        }
+
+        private static void ReadSlurs(XElement element, Note note, int staff,
+            Dictionary<Tuple<int, int, int>, Note> open, MusicXmlImport result)
+        {
+            foreach (var mark in element.Elements("notations").Elements("slur"))
+            {
+                var type = (string)mark.Attribute("type");
+                if (type == "continue") continue;
+                int number;
+                if (!int.TryParse((string)mark.Attribute("number") ?? "1", out number) || number < 1 || number > 16)
+                {
+                    result.Omitted++;
+                    continue;
+                }
+                var key = Tuple.Create(staff, note.Voice, number);
+                if (type == "start")
+                {
+                    if (open.ContainsKey(key)) result.Omitted++;
+                    open[key] = note;
+                }
+                else if (type == "stop")
+                {
+                    Note start;
+                    if (!open.TryGetValue(key, out start) || !NoteSlur.Fits(start, note) ||
+                        (start.SlursTo != null && start.SlursTo.Contains(note.Id)))
+                        result.Omitted++;
+                    else
+                    {
+                        if (start.SlursTo == null) start.SlursTo = new List<Guid>();
+                        start.SlursTo.Add(note.Id);
+                    }
+                    open.Remove(key);
+                }
+            }
         }
 
         private static void ReadTie(XElement element, Note note, int staff,

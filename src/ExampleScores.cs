@@ -11,7 +11,7 @@ namespace ValeScore
         public static readonly ExampleScore[] Library = {
             new ExampleScore("Prelúdio em dó", "Piano · letra e pauta dupla", () => Score.New(true)),
             new ExampleScore("Valsa da tarde", "Piano · 3/4, duas vozes e ligaduras", Waltz),
-            new ExampleScore("Canção ao entardecer", "Melodia · cifras e articulações", LeadSheet)
+            new ExampleScore("Canção ao entardecer", "Melodia · cifras e ligaduras de frase", LeadSheet)
         };
 
         private static Score Waltz()
@@ -55,6 +55,9 @@ namespace ValeScore
             score.SetExpression(0, 0, 48, "Cadd9", null);
             score.SetArticulation(0, 0, 4, "staccato");
             score.SetArticulation(0, 0, 60, "tenuto");
+            var melody = score.Parts[0].Staves[0];
+            score.ToggleSlur(0, 0, melody[0].Id, melody[3].Id);
+            score.ToggleSlur(0, 0, melody[8].Id, melody[15].Id);
             return score;
         }
     }

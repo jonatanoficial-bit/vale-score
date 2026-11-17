@@ -31,6 +31,75 @@ internal static class Smoke
         catch (Exception error) { Console.Error.WriteLine(error); Environment.ExitCode = 1; }
     }
 
+    private static void SlurChecks(string directory)
+    {
+        var score = Score.New(false);
+        var first = score.AddChordNote(0, 0, 0, 4, 32, 0);
+        var next = score.AddChordNote(0, 0, 4, 4, 34, 0);
+        var otherVoice = score.AddChordNote(0, 0, 8, 4, 28, 0, voice: 1);
+        var stop = score.AddChordNote(0, 0, 12, 4, 35, 0);
+        var distant = score.AddChordNote(0, 0, 52, 4, 37, 0);
+        Assert(score.ToggleSlur(0, 0, first.Id, stop.Id) && score.ToggleSlur(0, 0, first.Id, distant.Id) &&
+            score.ToggleSlur(0, 0, next.Id, stop.Id), "Frases aceitam alturas diferentes, pontos comuns e arcos aninhados");
+        bool invalid = false;
+        try { score.ToggleSlur(0, 0, first.Id, otherVoice.Id); }
+        catch (InvalidOperationException) { invalid = true; }
+        Assert(invalid && first.SlursTo.Count == 2, "Ligadura de expressão exige a mesma voz e preserva arcos anteriores");
+        var original = score.Snapshot();
+        var clone = Score.Restore(original);
+        Assert(clone.Parts[0].Staves[0].First().SlursTo.SequenceEqual(first.SlursTo),
+            "Arquivo nativo conserva os destinos da frase");
+
+        var copied = clone.CopyBar(0);
+        clone.PasteBar(1, copied);
+        clone.DuplicateBar(1);
+        var lane = clone.Parts[0].Staves[0];
+        var pasted = lane.Single(n => n.Tick == 16 && n.Voice == 0);
+        var duplicated = lane.Single(n => n.Tick == 32 && n.Voice == 0);
+        Assert(pasted.SlursTo.Single() == lane.Single(n => n.Tick == 28 && n.Voice == 0).Id &&
+            duplicated.SlursTo.Single() == lane.Single(n => n.Tick == 44 && n.Voice == 0).Id,
+            "Cópia e duplicação remapeiam os arcos internos para as notas novas");
+
+        using (var stream = new MemoryStream())
+        {
+            Output.MusicXml(score, stream);
+            stream.Position = 0;
+            var marks = XDocument.Load(stream).Descendants("slur").ToArray();
+            Assert(marks.Length == 6 && marks.Where(e => (string)e.Attribute("type") == "start")
+                .Select(e => (string)e.Attribute("number")).Distinct().Count() == 3,
+                "MusicXML distingue ligaduras sobrepostas com números separados");
+            stream.Position = 0;
+            var parsed = MusicXmlImport.Read(stream, "Frases");
+            var imported = parsed.Project.Parts[0].Staves[0];
+            Assert(parsed.Omitted == 0 && imported.Where(n => n.SlursTo != null)
+                .SelectMany(n => n.SlursTo.Select(id => imported.Single(target => target.Id == id).Tick))
+                .OrderBy(tick => tick).SequenceEqual(new[] { 12, 12, 52 }),
+                "Reimportação MusicXML mantém os três finais de frase");
+        }
+        string mxl = Path.Combine(directory, "frases.mxl");
+        using (var target = File.Create(mxl)) Output.CompressedMusicXml(score, target);
+        Assert(MusicXmlImport.Open(mxl).Project.Parts[0].Staves[0].Where(n => n.SlursTo != null)
+            .Sum(n => n.SlursTo.Count) == 3, "MXL preserva as ligaduras de expressão");
+
+        var without = Score.Restore(original);
+        Assert(!without.ToggleSlur(0, 0, first.Id, distant.Id), "Selecionar os mesmos extremos remove apenas o arco correspondente");
+        var layout = new ScoreLayout(score);
+        using (var withArc = new Bitmap(layout.Width, layout.Height))
+        using (var withoutArc = new Bitmap(layout.Width, layout.Height))
+        using (var a = Graphics.FromImage(withArc))
+        using (var b = Graphics.FromImage(withoutArc))
+        {
+            ScorePage.Draw(a, score, 0, null, -1);
+            ScorePage.Draw(b, without, 0, null, -1);
+            var systems = layout.OnPage(0).ToArray();
+            int endSystem = Array.FindIndex(systems, line => line.Any(bar => bar.Index == distant.Tick / score.BarTicks));
+            Func<int, bool> hasArc = top => Enumerable.Range(top - 40, 39).Any(y =>
+                Enumerable.Range(0, withArc.Width).Any(x => withArc.GetPixel(x, y) != withoutArc.GetPixel(x, y)));
+            Assert(endSystem > 0 && hasArc(layout.StaffTop(0, 0)) && hasArc(layout.StaffTop(endSystem, 0)),
+                "Arco de expressão aparece nos dois sistemas na quebra de linha");
+        }
+    }
+
     private static void TieChecks(string directory)
     {
         var score = Score.New(false);
@@ -277,6 +346,7 @@ internal static class Smoke
 
     private static void Run(string directory)
     {
+        SlurChecks(directory);
         TieChecks(directory);
         VoiceChecks(directory);
         ChordChecks(directory);
@@ -1021,6 +1091,27 @@ internal static class Smoke
             key(Keys.Right);
             key(Keys.Delete);
             Assert(!first().TiedTo.HasValue, "Apagar a nota de destino remove a ligadura pendente");
+            var phrase = Score.New(false);
+            phrase.Put(0, 0, 0, 4, 28, 0);
+            phrase.Put(0, 0, 4, 4, 30, 0);
+            phrase.Put(0, 0, 8, 4, 32, 0);
+            type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { phrase, null });
+            var slur = Descendants(editor).OfType<Button>().Single(b => b.AccessibleName == "Ligadura de expressão (Shift+S)");
+            slur.PerformClick();
+            Assert(sheet.SlurAnchor != null && sheet.SlurAnchor.NoteId == first().Id,
+                "Paleta marca visualmente a primeira nota da frase");
+            var ending = new StaffPosition { Tick = 8 };
+            click(sheet.OnSheet(ending, 30));
+            Assert(sheet.SlurAnchor == null && first().SlursTo.Single() == sheet.Music.Parts[0].Staves[0].Last().Id,
+                "Clicar na última nota conclui a ligadura de expressão");
+            key(Keys.Delete);
+            Assert(first().SlursTo == null, "Apagar o final limpa o arco correspondente");
+            ((Button)undo.GetValue(editor)).PerformClick();
+            Assert(first().SlursTo != null, "Desfazer recupera o final e a ligadura");
+            key(Keys.Left);
+            key(Keys.Shift | Keys.S);
+            key(Keys.Escape);
+            Assert(sheet.SlurAnchor == null, "Esc cancela a marcação de frase");
             type.GetMethod("LoadScore", flags).Invoke(editor, new object[] { Score.New(true), null });
             editor.Close();
         }

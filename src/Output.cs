@@ -223,6 +223,9 @@ namespace ValeScore
                 for (int p = 0; p < score.Parts.Count; p++)
                 {
                     var part = score.Parts[p];
+                    var slurs = NoteSlur.Numbered(part, score.BarTicks);
+                    var slurStarts = slurs.ToLookup(s => s.Start.Id);
+                    var slurEnds = slurs.ToLookup(s => s.End.Id);
                     xml.WriteStartElement("part");
                     xml.WriteAttributeString("id", "P" + (p + 1));
                     for (int bar = 0; bar < score.Bars; bar++)
@@ -275,7 +278,7 @@ namespace ValeScore
                                     xml.WriteElementString("duration", score.BarTicks.ToString());
                                     xml.WriteEndElement();
                                 }
-                                WriteVoice(xml, score, lane, measureNotes, marks, tiedFrom, staff, part.Staves.Count > 1, voice, start, end);
+                                WriteVoice(xml, score, lane, measureNotes, marks, tiedFrom, slurStarts, slurEnds, staff, part.Staves.Count > 1, voice, start, end);
                             }
                         }
                         xml.WriteEndElement();
@@ -287,7 +290,8 @@ namespace ValeScore
         }
 
         private static void WriteVoice(XmlWriter xml, Score score, List<Note> lane, Note[] measureNotes,
-            HashSet<Guid> marks, HashSet<Guid> tiedFrom, int staff, bool piano, int voice, int start, int end)
+            HashSet<Guid> marks, HashSet<Guid> tiedFrom, ILookup<Guid, NoteSlur> slurStarts,
+            ILookup<Guid, NoteSlur> slurEnds, int staff, bool piano, int voice, int start, int end)
         {
             string stem = measureNotes.Select(n => n.Voice).Distinct().Count() > 1 ? (voice == 0 ? "up" : "down") : null;
             int cursor = start;
@@ -323,7 +327,8 @@ namespace ValeScore
                     bool extra = member != note;
                     WriteNote(xml, member, member.Length, staff, piano,
                         previous != null && previous.HyphenAfter, extra ? null : beam,
-                        showAccidental: marks.Contains(member.Id), chordMember: extra, voice: voice, stem: stem, tieStop: tiedFrom.Contains(member.Id));
+                        showAccidental: marks.Contains(member.Id), chordMember: extra, voice: voice, stem: stem, tieStop: tiedFrom.Contains(member.Id),
+                        slurStarts: slurStarts[member.Id], slurEnds: slurEnds[member.Id]);
                 }
                 if (!note.IsRest) previous = members.FirstOrDefault(n => n.Lyric != null) ?? note;
                 cursor += note.Length;
@@ -361,8 +366,18 @@ namespace ValeScore
             xml.WriteEndElement();
         }
 
+        private static void WriteSlur(XmlWriter xml, NoteSlur slur, bool start)
+        {
+            xml.WriteStartElement("slur");
+            xml.WriteAttributeString("type", start ? "start" : "stop");
+            xml.WriteAttributeString("number", slur.Number.ToString());
+            if (start) xml.WriteAttributeString("placement", slur.Start.Voice == 0 ? "above" : "below");
+            xml.WriteEndElement();
+        }
+
         private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano,
-            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false, bool chordMember = false, int voice = 0, string stem = null, bool tieStop = false)
+            bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false, bool chordMember = false, int voice = 0, string stem = null, bool tieStop = false,
+            IEnumerable<NoteSlur> slurStarts = null, IEnumerable<NoteSlur> slurEnds = null)
         {
             xml.WriteStartElement("note");
             if (chordMember) xml.WriteElementString("chord", "");
@@ -412,11 +427,14 @@ namespace ValeScore
                     xml.WriteEndElement();
                 }
             }
-            if (tieStart || tieStop || (note != null && note.Articulation != null))
+            if (tieStart || tieStop || (note != null && note.Articulation != null) ||
+                (slurStarts != null && slurStarts.Any()) || (slurEnds != null && slurEnds.Any()))
             {
                 xml.WriteStartElement("notations");
                 if (tieStop) WriteTie(xml, "tied", "stop");
                 if (tieStart) WriteTie(xml, "tied", "start");
+                if (slurEnds != null) foreach (var slur in slurEnds) WriteSlur(xml, slur, false);
+                if (slurStarts != null) foreach (var slur in slurStarts) WriteSlur(xml, slur, true);
                 if (note.Articulation != null)
                 {
                     xml.WriteStartElement("articulations");

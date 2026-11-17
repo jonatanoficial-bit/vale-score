@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.18.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.19.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -94,7 +94,7 @@ Base da matriz: prévia 0.18.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
 | 05.01 | Staccato, staccatissimo, tenuto, marcato e acentos | Parcial | Uma marca por nota. [Testes de intercâmbio e reprodução](tests/Smoke.cs). |
-| 05.02 | Ligaduras de expressão e prolongamento | Parcial | [Suíte Windows](tests/Smoke.cs). Prolongamento dentro e entre compassos, reprodução e MusicXML. Ligaduras de expressão pendentes. |
+| 05.02 | Ligaduras de expressão e prolongamento | Parcial | [Suíte Windows](tests/Smoke.cs). Prolongamento com reprodução e ligaduras de expressão na mesma pauta e voz. Ambas têm intercâmbio MusicXML/MXL. Ajuste manual e expressão entre pautas pendentes. |
 | 05.03 | Fermatas, respirações e cesuras | Pendente | |
 | 05.04 | Trinados, mordentes e ornamentos | Pendente | |
 | 05.05 | Glissandi, portamenti e arpejos | Pendente | |

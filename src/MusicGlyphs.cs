@@ -10,10 +10,17 @@ namespace ValeScore
         {
             float width = end - start;
             float rise = side * Math.Min(11, 2.8f + width * .10f);
+            Arc(g, ink, start, y, end, y, rise, 2);
+        }
+
+        public static void Arc(Graphics g, Brush ink, float start, float y1, float end, float y2, float rise, float weight)
+        {
+            float width = end - start;
+            float inset = Math.Sign(rise) * weight;
             using (var path = new GraphicsPath())
             {
-                path.AddBezier(start, y, start + width * .25f, y + rise, end - width * .25f, y + rise, end, y);
-                path.AddBezier(end, y, end - width * .25f, y + rise - side * 2, start + width * .25f, y + rise - side * 2, start, y);
+                path.AddBezier(start, y1, start + width * .25f, y1 + rise, end - width * .25f, y2 + rise, end, y2);
+                path.AddBezier(end, y2, end - width * .25f, y2 + rise - inset, start + width * .25f, y1 + rise - inset, start, y1);
                 path.CloseFigure();
                 g.FillPath(ink, path);
             }
