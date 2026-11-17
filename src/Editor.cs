@@ -48,8 +48,11 @@ namespace ValeScore
         private readonly Stack<byte[]> undo = new Stack<byte[]>(), redo = new Stack<byte[]>();
         private readonly Timer timer = new Timer { Interval = 33 };
         private readonly Timer recoveryTimer = new Timer { Interval = 12000 };
-        private readonly Recovery recovery = new Recovery(Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ValeScore", "Recuperacao"));
+        private readonly Recovery recovery;
+        private readonly RecentProjects recentProjects;
+        private readonly StartScreen home;
+        private readonly Control[] workspace;
+        private bool atHome, hasDocument;
         private byte[] recoverySnapshot;
         private Score copiedBar;
         private readonly Stopwatch clock = new Stopwatch();
@@ -70,7 +73,7 @@ namespace ValeScore
         private static readonly double[] PlaybackSpeeds = { .5, .75, 1, 1.25, 1.5 };
         private bool preparing, syncingTracks, editingLyric;
         private EditMode mode = EditMode.Select;
-        private Score score = Score.New(true);
+        private Score score = Score.New(false);
         private string path;
         private byte[] saved;
         private int duration = 4;
@@ -79,8 +82,14 @@ namespace ValeScore
         private readonly List<StaffPosition> lanes = new List<StaffPosition>();
         private readonly List<QuickChoice> commands = new List<QuickChoice>();
 
-        public Editor()
+        public Editor() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ValeScore"))
         {
+        }
+
+        internal Editor(string profileFolder)
+        {
+            recovery = new Recovery(Path.Combine(profileFolder, "Recuperacao"));
+            recentProjects = new RecentProjects(profileFolder);
             Text = "Vale Score";
             StartPosition = FormStartPosition.CenterScreen;
             var desktop = Screen.FromPoint(Cursor.Position).WorkingArea;
@@ -93,6 +102,7 @@ namespace ValeScore
 
             var menu = new MenuStrip { Dock = DockStyle.Top, BackColor = Dark, ForeColor = TextColor, Font = Font, Renderer = new DarkMenu() };
             var file = new ToolStripMenuItem("Arquivo");
+            Item(file, "Central de projetos", Keys.Control | Keys.Shift | Keys.H, ShowHome);
             Item(file, "Nova partitura a partir de modelo…", Keys.Control | Keys.N, NewFromTemplate);
             Item(file, "Abrir…", Keys.Control | Keys.O, Open);
             Item(file, "Recuperar projeto…", Keys.None, Recover);
@@ -169,9 +179,13 @@ namespace ValeScore
             menu.Items.AddRange(new ToolStripItem[] { file, edit, playbackMenu, help });
 
             var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 58, Padding = new Padding(17, 9, 0, 4), WrapContents = false, BackColor = PanelColor };
-            var brand = new Label { Text = "Vale Score", ForeColor = TextColor, AutoSize = false, TextAlign = ContentAlignment.MiddleLeft,
-                Width = 155, Height = 37, Font = new Font("Georgia", 19, FontStyle.Bold), Margin = new Padding(5, 0, 9, 0) };
-            header.Controls.Add(brand);
+            var homeLink = Button("Vale Score", ShowHome);
+            homeLink.Font = new Font("Georgia", 17, FontStyle.Bold);
+            homeLink.MinimumSize = new Size(155, 37);
+            homeLink.Margin = new Padding(5, 0, 9, 0);
+            homeLink.AccessibleName = "Vale Score · Central de projetos";
+            figureTips.SetToolTip(homeLink, "Central de projetos (Ctrl+Shift+H)");
+            header.Controls.Add(homeLink);
             header.Controls.Add(Button("Novo", NewFromTemplate));
             header.Controls.Add(Button("Abrir", Open));
             header.Controls.Add(Button("Salvar", () => Save(false)));
@@ -391,6 +405,10 @@ namespace ValeScore
             Controls.Add(header);
             Controls.Add(menu);
             MainMenuStrip = menu;
+            workspace = Controls.Cast<Control>().ToArray();
+            home = new StartScreen(NewFromTemplate, Open, ImportMidiScore, Recover, ShowWorkspace, OpenExample)
+                { OpenRecent = OpenRecentProject, RemoveRecent = RemoveRecentProject };
+            Controls.Add(home);
 
             timer.Tick += delegate
             {
@@ -427,14 +445,12 @@ namespace ValeScore
             SetDuration(4);
             RefreshView(true);
             SetMode(EditMode.Select);
-            Report("Partitura de exemplo aberta");
+            ShowHome();
             recoveryTimer.Tick += delegate { SaveRecovery(); };
             Shown += delegate
             {
                 recoveryTimer.Start();
-                try { if (recovery.HasCopies()) Report("Há cópias de recuperação em Arquivo → Recuperar projeto"); }
-                catch (IOException) { }
-                catch (UnauthorizedAccessException) { }
+                if (atHome) RefreshHome();
             };
         }
 
@@ -907,7 +923,7 @@ namespace ValeScore
                     + new string('·', Score.DotCount(selected.Length)))
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
             bool dirty = Dirty();
-            Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
+            if (!atHome) Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
             documentTitle.Text = score.Title;
             documentInfo.Text = score.Tempo + " BPM  /  " + score.Beats + "⁄" + score.BeatType + "  /  " + (dirty ? "Editado" : path == null ? "Local" : "Salvo");
             undoButton.Enabled = undo.Count > 0;
@@ -1268,6 +1284,14 @@ namespace ValeScore
 
         protected override bool ProcessCmdKey(ref Message msg, Keys key)
         {
+            if (atHome)
+            {
+                if (key == (Keys.Control | Keys.N)) { NewFromTemplate(); return true; }
+                if (key == (Keys.Control | Keys.O)) { Open(); return true; }
+                if (key == (Keys.Control | Keys.I)) { ImportMidiScore(); return true; }
+                if (key == Keys.Escape && hasDocument) { ShowWorkspace(); return true; }
+                return base.ProcessCmdKey(ref msg, key);
+            }
             if (editingLyric) return HandleLyricKey(key) || base.ProcessCmdKey(ref msg, key);
             if (key == (Keys.Shift | Keys.L)) { StartLyrics(); return true; }
             if (ActiveControl is ComboBox || ActiveControl == tracks) return base.ProcessCmdKey(ref msg, key);
@@ -1348,9 +1372,92 @@ namespace ValeScore
             redo.Clear();
             position = new StaffPosition { Step = 28 };
             inputAlter = null;
+            hasDocument = true;
+            ShowWorkspace();
             RefreshView(true);
             SetMode(score.Parts.SelectMany(part => part.Staves).All(staff => staff.Count == 0) ? EditMode.Write : EditMode.Select);
             surface.AutoScrollPosition = Point.Empty;
+        }
+
+        private void ShowHome()
+        {
+            if (!CommitLyric()) return;
+            if (hasDocument) Stop();
+            atHome = true;
+            SuspendLayout();
+            foreach (var control in workspace) control.Hide();
+            RefreshHome();
+            home.Show();
+            home.BringToFront();
+            Text = "Vale Score — Central de projetos";
+            ResumeLayout(true);
+            home.SelectNextControl(null, true, true, true, false);
+        }
+
+        private void ShowWorkspace()
+        {
+            if (!hasDocument) return;
+            atHome = false;
+            SuspendLayout();
+            home.Hide();
+            foreach (var control in workspace) control.Show();
+            ResumeLayout(true);
+            Text = score.Title + (Dirty() ? " *" : "") + " — Vale Score";
+            FocusWorkspace();
+        }
+
+        private void RefreshHome()
+        {
+            string[] recent = new string[0];
+            bool canRecover = false;
+            try { recent = recentProjects.Read(); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            try { canRecover = recovery.HasCopies(); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+            home.RefreshProjects(recent, canRecover, hasDocument);
+        }
+
+        private void RecordRecent(string file)
+        {
+            try { recentProjects.Record(file); }
+            catch (IOException) { }
+            catch (UnauthorizedAccessException) { }
+        }
+
+        private void RemoveRecentProject(string file)
+        {
+            try
+            {
+                recentProjects.Remove(file);
+                RefreshHome();
+            }
+            catch (Exception error) { MessageBox.Show(this, error.Message, "Projetos recentes", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void OpenRecentProject(string file)
+        {
+            if (!File.Exists(file))
+            {
+                MessageBox.Show(this, "O projeto não está disponível neste local. Use Abrir arquivo para escolher a nova localização.",
+                    "Projeto recente", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            if (hasDocument && string.Equals(file, path, StringComparison.OrdinalIgnoreCase))
+            {
+                ShowWorkspace();
+                return;
+            }
+            try { OpenNativeProject(file); }
+            catch (Exception error) { MessageBox.Show(this, error.Message, "Não foi possível abrir", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
+        }
+
+        private void OpenExample(ExampleScore example)
+        {
+            if (!ConfirmLeave()) return;
+            LoadScore(example.Create(), null);
+            Report("Exemplo · " + example.Title);
         }
         private void New(bool example)
         {
@@ -1361,17 +1468,21 @@ namespace ValeScore
         {
             var choices = ScoreTemplate.Library.Select(template => new QuickChoice(template.Title, template.Detail,
                 () => CreateFromArrangement(template.Create, template.Title))).ToList();
-            choices.Add(new QuickChoice("Reutilizar formação atual", "Conserva instrumentos, fórmula, armadura e andamento",
-                () => CreateFromArrangement(() => score.EmptyArrangement(), "Formação atual")));
+            if (hasDocument)
+                choices.Add(new QuickChoice("Reutilizar formação atual", "Conserva instrumentos, fórmula, armadura e andamento",
+                    () => CreateFromArrangement(() => score.EmptyArrangement(), "Formação atual")));
             using (var dialog = new QuickPicker("Nova partitura", "Escolha a formação da sua partitura", choices, "Criar"))
                 if (dialog.ShowDialog(this) == DialogResult.OK) dialog.Choice.Run();
         }
 
         private void CreateFromArrangement(Func<Score> create, string name)
         {
-            if (!ConfirmLeave()) return;
-            LoadScore(create(), null);
-            Report("Novo projeto · " + name);
+            using (var dialog = new NewProjectDialog(create(), name))
+            {
+                if (dialog.ShowDialog(this) != DialogResult.OK || !ConfirmLeave()) return;
+                LoadScore(dialog.Project, null);
+                Report("Novo projeto · " + name);
+            }
         }
 
         private void RenameSelectedPart()
@@ -1410,13 +1521,19 @@ namespace ValeScore
                         OpenMusicXmlProject(dialog.FileName);
                         return;
                     }
-                    var model = Score.Open(dialog.FileName);
-                    if (!ConfirmLeave()) return;
-                    LoadScore(model, dialog.FileName);
-                    Report("Projeto aberto");
+                    OpenNativeProject(dialog.FileName);
                 }
                 catch (Exception ex) { MessageBox.Show(this, ex.Message, "Não foi possível abrir", MessageBoxButtons.OK, MessageBoxIcon.Warning); }
             }
+        }
+
+        private void OpenNativeProject(string file)
+        {
+            var model = Score.Open(file);
+            if (!ConfirmLeave()) return;
+            LoadScore(model, file);
+            RecordRecent(file);
+            Report("Projeto aberto");
         }
 
         private void ImportMusicXml()
@@ -1503,6 +1620,7 @@ namespace ValeScore
             {
                 score.Save(destination);
                 path = destination;
+                RecordRecent(destination);
                 saved = score.Snapshot();
                 ClearRecovery();
                 RefreshView();
@@ -1647,7 +1765,7 @@ namespace ValeScore
                     {
                         BeginInvoke(new Action(() =>
                         {
-                            if (generation == inputGeneration && !IsDisposed && mode == EditMode.Write &&
+                            if (generation == inputGeneration && !IsDisposed && !atHome && mode == EditMode.Write &&
                                 !preparing && !timer.Enabled && !editingLyric) EnterMidiPitch(pitch);
                         }));
                     }

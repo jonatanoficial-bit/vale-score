@@ -9,6 +9,15 @@ using ValeScore;
 
 internal static class Smoke
 {
+    private static System.Collections.Generic.IEnumerable<Control> Descendants(Control root)
+    {
+        foreach (Control child in root.Controls)
+        {
+            yield return child;
+            foreach (var nested in Descendants(child)) yield return nested;
+        }
+    }
+
     private static void Assert(bool condition, string description)
     {
         if (!condition) throw new Exception(description);
@@ -525,18 +534,73 @@ internal static class Smoke
             }
             preview.Close();
         }
-        using (var editor = new Editor())
+        string homeProfile = Path.Combine(directory, "perfil-central");
+        var recentStore = new RecentProjects(homeProfile);
+        string projectOne = Path.Combine(directory, "Quarteto.valescore");
+        string projectTwo = Path.Combine(directory, "Voz e piano.valescore");
+        var homeScore = Score.New(true);
+        homeScore.Title = "Quarteto";
+        homeScore.Save(projectOne);
+        homeScore.Title = "Voz e piano";
+        homeScore.Save(projectTwo);
+        recentStore.Record(projectOne);
+        recentStore.Record(projectTwo);
+        recentStore.Record(projectOne);
+        Assert(new RecentProjects(homeProfile).Read().SequenceEqual(new[] { projectOne, projectTwo }),
+            "Recentes persistem em ordem sem duplicatas");
+        recentStore.Remove(projectTwo);
+        Assert(File.Exists(projectTwo) && recentStore.Read().SequenceEqual(new[] { projectOne }),
+            "Remover recente conserva o projeto original");
+        recentStore.Remove(projectOne);
+        var setupType = typeof(Editor).Assembly.GetType("ValeScore.NewProjectDialog", true);
+        var newDraft = ScoreTemplate.Library[1].Create();
+        using (var setup = (Form)Activator.CreateInstance(setupType, new object[] { newDraft, "Voz e piano" }))
+        {
+            setup.Show();
+            Application.DoEvents();
+            setup.Controls.OfType<TextBox>().Single(input => input.AccessibleName == "Título").Text = "Ensaio";
+            setup.Controls.OfType<ComboBox>().Single(input => input.AccessibleName == "Fórmula de compasso").SelectedItem = "6/8";
+            setup.Controls.OfType<NumericUpDown>().Single(input => input.AccessibleName == "Quantidade de compassos").Value = 12;
+            setup.Controls.OfType<Button>().Single(button => button.Text == "Criar partitura").PerformClick();
+            Assert(setup.DialogResult == DialogResult.OK && newDraft.Title == "Ensaio" && newDraft.BarTicks == 12 &&
+                newDraft.Bars == 12 && newDraft.Parts.Count == 2, "Configuração inicial aplica título, métrica e quantidade ao modelo");
+        }
+        using (var editor = (Editor)Activator.CreateInstance(typeof(Editor),
+            BindingFlags.NonPublic | BindingFlags.Instance, null, new object[] { homeProfile }, null))
         {
             editor.Show();
             Application.DoEvents();
+            var type = typeof(Editor);
+            var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+            var start = (Control)type.GetField("home", flags).GetValue(editor);
+            var workspace = (Control[])type.GetField("workspace", flags).GetValue(editor);
+            var recentList = (ListBox)start.GetType().GetField("recentList", flags).GetValue(start);
+            Assert(start.Visible && workspace.All(control => !control.Visible) && editor.Text.Contains("Central de projetos"),
+                "Inicialização mostra a central sem abrir uma partitura");
+            using (var homeImage = new Bitmap(editor.Width, editor.Height))
+            {
+                editor.DrawToBitmap(homeImage, new Rectangle(Point.Empty, editor.Size));
+                homeImage.Save(Path.Combine(directory, "central-projetos.png"));
+            }
+            Assert(recentList.Items.Count == 0, "Primeira abertura mostra uma lista de recentes vazia");
+            recentStore.Record(projectOne);
+            type.GetMethod("RefreshHome", flags).Invoke(editor, null);
+            Assert(recentList.Items.Count == 1 && (string)recentList.Items[0] == projectOne,
+                "Central lê projetos recentes do perfil");
+            var openRecentButton = (Button)start.GetType().GetField("openRecent", flags).GetValue(start);
+            openRecentButton.PerformClick();
+            Assert(!start.Visible && editor.Text.Contains("Quarteto"), "Abrir recente leva ao editor do projeto");
+            type.GetMethod("ShowHome", flags).Invoke(editor, null);
+            Assert(start.Visible && ((Button)start.GetType().GetField("resume", flags).GetValue(start)).Visible,
+                "Voltar à central mantém a edição disponível");
+            var example = Descendants(start).OfType<Button>().Single(button => button.AccessibleName == "Abrir exemplo: Prelúdio em dó");
+            example.PerformClick();
             Assert(editor.Visible && editor.Text.Contains("Prelúdio"), "Janela nativa abre com partitura");
             using (var image = new Bitmap(editor.Width, editor.Height))
             {
                 editor.DrawToBitmap(image, new Rectangle(Point.Empty, editor.Size));
                 image.Save(Path.Combine(directory, "editor.png"));
             }
-            var type = typeof(Editor);
-            var flags = BindingFlags.NonPublic | BindingFlags.Instance;
             var catalog = ((System.Collections.IEnumerable)type.GetField("commands", flags).GetValue(editor)).Cast<object>().ToArray();
             Assert(catalog.Length > 30 && catalog.Any(command => command.ToString().Contains("Buscar comandos")) == false,
                 "Catálogo registra ações executáveis e evita buscar a si mesmo");

@@ -1,12 +1,12 @@
 # Vale Score
 
-**0.14.0 · Prévia para Windows x64**
+**0.15.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.14.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.14.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.15.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.15.0-win-x64.zip.sha256)
 
-Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. A partitura de exemplo inclui notas e letras para experimentar a edição.
+Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
 - **Escrever.** Escolha a figura na paleta e clique na pauta. Passe o mouse pelo símbolo para ver o nome. No modo **Notas** (**N**), **A S D F G H J** inserem Dó a Si. As teclas **1–5** selecionam a figura da ferramenta ativa.
 - **Inserir pausas.** Clique no símbolo da pausa desejada ou use **R** e escolha a duração. Clique na pauta ou use **Enter** para inserir no cursor. A duração escolhida é salva e exportada.
@@ -33,6 +33,14 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.15
+
+- O programa abre na **Central de projetos**, com criação por modelo, abertura de arquivo, projetos recentes e exemplos clicáveis.
+- Ao criar uma partitura, escolha a formação e configure título, compositor, fórmula de compasso, tonalidade, quantidade de compassos e andamento.
+- A central oferece **Prelúdio em dó**, **Valsa da tarde** e **Canção ao entardecer**. Cada exemplo abre como uma cópia editável.
+- Os arquivos .valescore abertos ou salvos ficam na lista de recentes deste computador. Remover da lista conserva o arquivo.
+- No editor, clique em **Vale Score** ou use **Ctrl+Shift+H** para voltar à central. **Continuar edição** retoma o mesmo projeto.
 
 ## Novidades da 0.14
 
