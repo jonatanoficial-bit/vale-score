@@ -37,6 +37,9 @@ namespace ValeScore
     {
         [DataMember] public string Name;
         [DataMember] public string Instrument;
+        [DataMember(EmitDefaultValue = false)] public int? Volume;
+        [DataMember(EmitDefaultValue = false)] public bool Muted;
+        [DataMember(EmitDefaultValue = false)] public bool Solo;
         [DataMember] public List<List<Note>> Staves;
     }
 
@@ -68,7 +71,7 @@ namespace ValeScore
             PruneNoteLinks();
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 12;
+        public const int CurrentVersion = 13;
         public const int VoicesPerStaff = 2;
         public const int MaxChordNotes = 8;
         private const int MaxProjectBytes = 48 * 1024 * 1024;
@@ -153,6 +156,11 @@ namespace ValeScore
             score.Put(0, 1, 40, 4, bass[5], 0);
             score.PutRest(0, 1, 44, 4);
             return score;
+        }
+
+        public double PlaybackGain(Part part)
+        {
+            return part.Muted || (Parts.Any(p => p.Solo) && !part.Solo) ? 0 : (part.Volume ?? 100) / 100.0;
         }
 
         public void AddPart(string instrument)
@@ -632,7 +640,7 @@ namespace ValeScore
             var ids = new HashSet<Guid>();
             foreach (var p in Parts)
             {
-                if (p == null || string.IsNullOrWhiteSpace(p.Name) || p.Name.Length > 40 ||
+                if (p == null || (p.Volume.HasValue && (p.Volume.Value < 0 || p.Volume.Value > 100)) || string.IsNullOrWhiteSpace(p.Name) || p.Name.Length > 40 ||
                     (p.Instrument != "Piano" && p.Instrument != "Violão" && p.Instrument != "Voz") ||
                     p.Staves == null || p.Staves.Count != (p.Instrument == "Piano" ? 2 : 1))
                     throw new InvalidDataException("Instrumento ou configuração de pautas inválida.");

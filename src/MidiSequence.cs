@@ -240,6 +240,7 @@ namespace ValeScore
                 for (int channel = 0; channel < score.Parts.Count; channel++)
                 {
                     var part = score.Parts[channel];
+                    double partGain = score.PlaybackGain(part);
                     var name = Encoding.UTF8.GetBytes(part.Name);
                     var data = new List<EventData> {
                         new EventData { Order = -3, Data = new byte[] { 0xFF, 3, (byte)name.Length }.Concat(name).ToArray() },
@@ -250,7 +251,7 @@ namespace ValeScore
                     // Some synths stop every instance of a pitch on note-off. Merge overlapping
                     // instances of the same pitch on a channel while retaining adjacent attacks.
                     var attacks = new List<Tuple<Note, int, double>>();
-                    foreach (var staff in part.Staves)
+                    foreach (var staff in part.Staves.Where(s => partGain > 0))
                     {
                         var lengths = NoteTies.AttackLengths(staff);
                         var loudness = new[] { 88, 88 };
@@ -278,7 +279,7 @@ namespace ValeScore
                             if (start >= 0) AddPitch(data, channel, group.Key, start, end, velocity);
                             start = onset;
                             end = release;
-                            velocity = Articulations.Attack(note.Articulation, attack.Item2);
+                            velocity = Math.Max(1, (int)Math.Round(Articulations.Attack(note.Articulation, attack.Item2) * partGain));
                         }
                         AddPitch(data, channel, group.Key, start, end, velocity);
                     }

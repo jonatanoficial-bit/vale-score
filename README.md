@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.19.0 · Prévia para Windows x64**
+**0.20.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.19.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.19.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.20.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.20.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -33,6 +33,12 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.20
+
+- **Reprodução → Mixer de instrumentos** ou **Ctrl+M** abre volume, silenciar e solo por instrumento. Aplicar grava no projeto e participa de desfazer/refazer. A reprodução seguinte e as exportações MIDI e WAV usam esses ajustes.
+- A paleta oferece símbolos de staccato, staccatissimo, tenuto, acento e marcato. Selecione uma nota e clique no símbolo.
+- Panorâmica estéreo, efeitos e automação do mixer permanecem pendentes.
 
 ## Novidades da 0.19
 

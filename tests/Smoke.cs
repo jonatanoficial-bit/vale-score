@@ -346,6 +346,25 @@ internal static class Smoke
 
     private static void Run(string directory)
     {
+        var mix = Score.New(true);
+        mix.Parts[0].Muted = true;
+        using (var silent = Output.Wave(mix))
+            Assert(silent.ToArray().Skip(44).All(b => b == 0), "Mixer silencia o instrumento no WAV");
+        using (var file = new MemoryStream())
+        {
+            MidiSequence.Export(mix, file);
+            file.Position = 0;
+            Assert(!MidiSequence.Read(file).Events.Any(e => (e.Status & 240) == 0x90 && e.Data2 > 0),
+                "Mixer silencia os ataques na exportação MIDI");
+        }
+        mix.Parts[0].Muted = false;
+        mix.Parts[0].Volume = 35;
+        mix.AddPart("Voz");
+        mix.Parts[1].Solo = true;
+        Assert(mix.PlaybackGain(mix.Parts[0]) == 0 && mix.PlaybackGain(mix.Parts[1]) == 1,
+            "Solo isola o instrumento escolhido");
+        var mixCopy = Score.Restore(mix.Snapshot());
+        Assert(mixCopy.Parts[0].Volume == 35 && mixCopy.Parts[1].Solo, "Projeto reabre os controles do mixer");
         SlurChecks(directory);
         TieChecks(directory);
         VoiceChecks(directory);

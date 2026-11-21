@@ -173,6 +173,7 @@ namespace ValeScore
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
             var playbackMenu = new ToolStripMenuItem("Reprodução");
+            Item(playbackMenu, "Mixer de instrumentos…", Keys.Control | Keys.M, EditMixer);
             Item(playbackMenu, "Tocar ou parar partitura", Keys.None, Play);
             Item(playbackMenu, "Ensaiar trecho…", Keys.Control | Keys.J, SelectPlaybackRange);
             Item(playbackMenu, "Tocar a partir do compasso atual", Keys.None, PlayFromCurrentBar);
@@ -306,6 +307,14 @@ namespace ValeScore
                 AddMusicButton(alterations, button, names[i], () => ChooseAccidental(alter));
                 accidentalButtons.Add(button);
             }
+            var articulations = AddPaletteGroup("ARTICULAÇÕES", Articulations.Names.Length);
+            for (int index = 0; index < Articulations.Names.Length; index++)
+            {
+                string mark = Articulations.XmlNames[index];
+                AddMusicButton(articulations, new MusicButton((g, ink) => Articulations.Draw(g, ink, mark, 0, 0, true)),
+                    Articulations.Names[index], () => ChangeArticulation(mark));
+            }
+            tools.AutoScroll = true;
             var dots = AddPaletteGroup("PONTOS", 2);
             dotButton = new MusicButton((g, ink) => g.FillEllipse(ink, -2.4f, -2.4f, 4.8f, 4.8f));
             doubleDotButton = new MusicButton((g, ink) =>
@@ -830,6 +839,60 @@ namespace ValeScore
         {
             slurAnchor = null;
             sheet.SlurAnchor = null;
+        }
+
+        private void EditMixer()
+        {
+            if (!CommitLyric()) return;
+            using (var dialog = new Form { Text = "Mixer de instrumentos", ClientSize = new Size(540, 120 + score.Parts.Count * 52),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, Font = Font })
+            {
+                var volumes = new List<NumericUpDown>();
+                var mutes = new List<CheckBox>();
+                var solos = new List<CheckBox>();
+                dialog.Controls.Add(new Label { Text = "Volume (%)", Location = new Point(225, 15), AutoSize = true });
+                for (int i = 0; i < score.Parts.Count; i++)
+                {
+                    var part = score.Parts[i];
+                    int y = 43 + i * 52;
+                    var volume = new NumericUpDown { Minimum = 0, Maximum = 100, Value = part.Volume ?? 100,
+                        Bounds = new Rectangle(225, y, 80, 28), AccessibleName = "Volume de " + part.Name };
+                    var mute = new CheckBox { Text = "Silenciar", Checked = part.Muted, Bounds = new Rectangle(320, y, 100, 28),
+                        AccessibleName = "Silenciar " + part.Name };
+                    var solo = new CheckBox { Text = "Solo", Checked = part.Solo, Bounds = new Rectangle(430, y, 80, 28),
+                        AccessibleName = "Solo de " + part.Name };
+                    dialog.Controls.Add(new Label { Text = part.Name, Bounds = new Rectangle(18, y, 195, 28), AutoEllipsis = true });
+                    dialog.Controls.AddRange(new Control[] { volume, mute, solo });
+                    volumes.Add(volume); mutes.Add(mute); solos.Add(solo);
+                }
+                int footer = dialog.ClientSize.Height - 48;
+                var reset = new Button { Text = "Restaurar", Bounds = new Rectangle(18, footer, 100, 30) };
+                reset.Click += delegate
+                {
+                    foreach (var volume in volumes) volume.Value = 100;
+                    foreach (var mute in mutes) mute.Checked = false;
+                    foreach (var solo in solos) solo.Checked = false;
+                };
+                var apply = new Button { Text = "Aplicar", Bounds = new Rectangle(320, footer, 90, 30) };
+                apply.Click += delegate
+                {
+                    if (Change(() =>
+                    {
+                        for (int i = 0; i < score.Parts.Count; i++)
+                        {
+                            score.Parts[i].Volume = (int)volumes[i].Value;
+                            score.Parts[i].Muted = mutes[i].Checked;
+                            score.Parts[i].Solo = solos[i].Checked;
+                        }
+                    })) dialog.DialogResult = DialogResult.OK;
+                };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(420, footer, 100, 30) };
+                dialog.Controls.AddRange(new Control[] { reset, apply, cancel });
+                dialog.AcceptButton = apply;
+                dialog.CancelButton = cancel;
+                dialog.ShowDialog(this);
+            }
         }
 
         private void ToggleTie()

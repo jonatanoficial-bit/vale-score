@@ -53,6 +53,8 @@ namespace ValeScore
             double gain = 0.68 / Math.Sqrt(score.Parts.Sum(p => p.Staves.Count));
             foreach (var part in score.Parts)
             {
+                double partGain = score.PlaybackGain(part);
+                if (partGain == 0) continue;
                 double decay = part.Instrument == "Voz" ? 0.8 : part.Instrument == "Violão" ? 5.0 : 2.8;
                 foreach (var staff in part.Staves)
                 {
@@ -69,7 +71,7 @@ namespace ValeScore
                             if (!lengths.TryGetValue(note.Id, out length)) continue;
                             int start = (int)Math.Round(note.Tick * tick);
                             int count = (int)Math.Round((note.Tick + length) * tick) - start;
-                            AddTone(samples, start, count, note.Midi, gain * Articulations.Attack(note.Articulation, velocities[note.Voice]) / (88 * headroom), decay);
+                            AddTone(samples, start, count, note.Midi, gain * partGain * Articulations.Attack(note.Articulation, velocities[note.Voice]) / (88 * headroom), decay);
                         }
                     }
                 }
