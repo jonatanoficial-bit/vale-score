@@ -844,11 +844,13 @@ namespace ValeScore
         private void EditMixer()
         {
             if (!CommitLyric()) return;
-            using (var dialog = new Form { Text = "Mixer de instrumentos", ClientSize = new Size(540, 120 + score.Parts.Count * 52),
+            using (var dialog = new Form { Text = "Mixer de instrumentos", ClientSize = new Size(690, 120 + score.Parts.Count * 52),
                 StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false, MinimizeBox = false, Font = Font })
             {
                 var volumes = new List<NumericUpDown>();
+                var pans = new List<NumericUpDown>();
+                dialog.Controls.Add(new Label { Text = "Pan E −100 / D +100", Location = new Point(530, 15), AutoSize = true });
                 var mutes = new List<CheckBox>();
                 var solos = new List<CheckBox>();
                 dialog.Controls.Add(new Label { Text = "Volume (%)", Location = new Point(225, 15), AutoSize = true });
@@ -864,6 +866,10 @@ namespace ValeScore
                         AccessibleName = "Solo de " + part.Name };
                     dialog.Controls.Add(new Label { Text = part.Name, Bounds = new Rectangle(18, y, 195, 28), AutoEllipsis = true });
                     dialog.Controls.AddRange(new Control[] { volume, mute, solo });
+                    var pan = new NumericUpDown { Minimum = -100, Maximum = 100, Value = part.Pan,
+                        Bounds = new Rectangle(540, y, 100, 28), AccessibleName = "Panorâmica de " + part.Name };
+                    dialog.Controls.Add(pan);
+                    pans.Add(pan);
                     volumes.Add(volume); mutes.Add(mute); solos.Add(solo);
                 }
                 int footer = dialog.ClientSize.Height - 48;
@@ -871,6 +877,7 @@ namespace ValeScore
                 reset.Click += delegate
                 {
                     foreach (var volume in volumes) volume.Value = 100;
+                    foreach (var pan in pans) pan.Value = 0;
                     foreach (var mute in mutes) mute.Checked = false;
                     foreach (var solo in solos) solo.Checked = false;
                 };
@@ -882,6 +889,7 @@ namespace ValeScore
                         for (int i = 0; i < score.Parts.Count; i++)
                         {
                             score.Parts[i].Volume = (int)volumes[i].Value;
+                            score.Parts[i].Pan = (int)pans[i].Value;
                             score.Parts[i].Muted = mutes[i].Checked;
                             score.Parts[i].Solo = solos[i].Checked;
                         }

@@ -248,6 +248,9 @@ namespace ValeScore
                             (byte)(part.Instrument == "Violão" ? 24 : part.Instrument == "Voz" ? 52 : 0) } }
                     };
 
+                    data.Add(new EventData { Order = -1, Data = new byte[] { (byte)(0xB0 | channel), 10,
+                        (byte)(part.Pan <= 0 ? 64 + part.Pan * 64 / 100 : 64 + part.Pan * 63 / 100) } });
+
                     // Some synths stop every instance of a pitch on note-off. Merge overlapping
                     // instances of the same pitch on a channel while retaining adjacent attacks.
                     var attacks = new List<Tuple<Note, int, double>>();

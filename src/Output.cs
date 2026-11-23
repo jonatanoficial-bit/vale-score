@@ -50,11 +50,14 @@ namespace ValeScore
             double tick = SampleRate * 15.0 / (score.Tempo * speed);
             int size = (int)Math.Ceiling(score.Bars * score.BarTicks * tick);
             var samples = new float[size];
+            bool stereo = score.Parts.Any(p => p.Pan != 0);
+            var right = stereo ? new float[size] : null;
             double gain = 0.68 / Math.Sqrt(score.Parts.Sum(p => p.Staves.Count));
             foreach (var part in score.Parts)
             {
                 double partGain = score.PlaybackGain(part);
                 if (partGain == 0) continue;
+                var instrumentSamples = stereo ? new float[size] : samples;
                 double decay = part.Instrument == "Voz" ? 0.8 : part.Instrument == "Violão" ? 5.0 : 2.8;
                 foreach (var staff in part.Staves)
                 {
@@ -71,11 +74,22 @@ namespace ValeScore
                             if (!lengths.TryGetValue(note.Id, out length)) continue;
                             int start = (int)Math.Round(note.Tick * tick);
                             int count = (int)Math.Round((note.Tick + length) * tick) - start;
-                            AddTone(samples, start, count, note.Midi, gain * partGain * Articulations.Attack(note.Articulation, velocities[note.Voice]) / (88 * headroom), decay);
+                            AddTone(instrumentSamples, start, count, note.Midi, gain * partGain * Articulations.Attack(note.Articulation, velocities[note.Voice]) / (88 * headroom), decay);
                         }
                     }
                 }
+                if (stereo)
+                {
+                    double leftGain = Math.Min(1, 1 - part.Pan / 100.0);
+                    double rightGain = Math.Min(1, 1 + part.Pan / 100.0);
+                    for (int i = 0; i < size; i++)
+                    {
+                        samples[i] += (float)(instrumentSamples[i] * leftGain);
+                        right[i] += (float)(instrumentSamples[i] * rightGain);
+                    }
+                }
             }
+            var beforeClick = stereo && metronome ? (float[])samples.Clone() : null;
             if (metronome)
             {
                 int total = score.Bars * score.BarTicks;
@@ -90,7 +104,16 @@ namespace ValeScore
                             Math.Min(1, i / 16.0) * Math.Pow(1 - i / (double)count, 2));
                 }
             }
-            return WriteWave(samples);
+            if (beforeClick != null)
+                for (int i = 0; i < size; i++) right[i] += samples[i] - beforeClick[i];
+            if (!stereo) return WriteWave(samples);
+            var interleaved = new float[size * 2];
+            for (int i = 0; i < size; i++)
+            {
+                interleaved[i * 2] = samples[i];
+                interleaved[i * 2 + 1] = right[i];
+            }
+            return WriteWave(interleaved, 2);
         }
 
         private sealed class Voice
@@ -170,7 +193,7 @@ namespace ValeScore
             }
         }
 
-        private static MemoryStream WriteWave(float[] samples)
+        private static MemoryStream WriteWave(float[] samples, int channels = 1)
         {
             int size = samples.Length;
             var stream = new MemoryStream(44 + size * 2);
@@ -181,10 +204,10 @@ namespace ValeScore
                 writer.Write(Encoding.ASCII.GetBytes("WAVEfmt "));
                 writer.Write(16);
                 writer.Write((short)1);
-                writer.Write((short)1);
+                writer.Write((short)channels);
                 writer.Write(SampleRate);
-                writer.Write(SampleRate * 2);
-                writer.Write((short)2);
+                writer.Write(SampleRate * 2 * channels);
+                writer.Write((short)(2 * channels));
                 writer.Write((short)16);
                 writer.Write(Encoding.ASCII.GetBytes("data"));
                 writer.Write(size * 2);

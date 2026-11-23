@@ -365,6 +365,28 @@ internal static class Smoke
             "Solo isola o instrumento escolhido");
         var mixCopy = Score.Restore(mix.Snapshot());
         Assert(mixCopy.Parts[0].Volume == 35 && mixCopy.Parts[1].Solo, "Projeto reabre os controles do mixer");
+        var stereoScore = Score.New(true);
+        foreach (int pan in new[] { -100, 100 })
+        {
+            stereoScore.Parts[0].Pan = pan;
+            using (var wave = Output.Wave(stereoScore))
+            {
+                var bytes = wave.ToArray();
+                Assert(BitConverter.ToInt16(bytes, 22) == 2, "Pan gera WAV estéreo");
+                int silentOffset = pan < 0 ? 2 : 0;
+                Assert(Enumerable.Range(0, (bytes.Length - 44) / 4).All(i =>
+                    BitConverter.ToInt16(bytes, 44 + i * 4 + silentOffset) == 0),
+                    "Pan extremo silencia o canal oposto");
+            }
+        }
+        Assert(Score.Restore(stereoScore.Snapshot()).Parts[0].Pan == 100, "Projeto conserva panorâmica");
+        using (var file = new MemoryStream())
+        {
+            MidiSequence.Export(stereoScore, file);
+            file.Position = 0;
+            Assert(MidiSequence.Read(file).Events.Any(e => (e.Status & 240) == 0xB0 && e.Data1 == 10 && e.Data2 == 127),
+                "Exportação MIDI registra panorâmica por instrumento");
+        }
         SlurChecks(directory);
         TieChecks(directory);
         VoiceChecks(directory);
