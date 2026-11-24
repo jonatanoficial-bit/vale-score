@@ -275,12 +275,16 @@ namespace ValeScore
                             DrawLyrics(g, layout, lane, first, after, y, score.BarTicks, ink, center);
                             foreach (var item in lane.Where(n => n.Tick >= first * score.BarTicks && n.Tick < after * score.BarTicks))
                             {
-                                if (item.Chord == null && item.Dynamic == null) continue;
+                                if (item.Chord == null && item.Dynamic == null && item.ExpressionText == null && item.PauseMark == null) continue;
                                 float x = EventX(layout.MeasureOf(item.Tick / score.BarTicks), item);
                                 if (item.Chord != null)
                                     g.DrawString(item.Chord, ScoreLayout.ChordFont, ink, new PointF(x, y - 37), center);
+                                if (item.ExpressionText != null)
+                                    g.DrawString(item.ExpressionText, ScoreLayout.TextFont, ink, new PointF(x, y - 56), center);
                                 if (item.Dynamic != null)
                                     g.DrawString(item.Dynamic, ScoreLayout.DynamicFont, ink, new PointF(x, y + 54), center);
+                                if (item.PauseMark != null)
+                                    MusicGlyphs.PauseMark(g, ink, item.PauseMark, x + (item.PauseMark == "fermata" ? 0 : 10), y - 17);
                             }
                             if (hover != null && hover.Part == part && hover.Staff == staff &&
                                 hover.Tick >= first * score.BarTicks && hover.Tick < after * score.BarTicks && (!hover.HitNote || hover.Voice != previewVoice))
@@ -308,6 +312,19 @@ namespace ValeScore
                                         DrawNote(g, ghost, previewLine, x, y, hover.Step - BottomStep(staff), shownLength, alter, alter != prior, hasOtherVoice ? VoiceDirection(previewVoice) : 0);
                                 }
                             }
+                        }
+                    }
+                    foreach (var mark in score.RehearsalMarks.Where(mark => mark.Bar >= first && mark.Bar < after))
+                    {
+                        var measure = layout.MeasureOf(mark.Bar);
+                        float width = Math.Max(26, Math.Min(70, g.MeasureString(mark.Text, small).Width + 12));
+                        using (var fill = new SolidBrush(Color.FromArgb(241, 232, 203)))
+                        using (var border = new Pen(Ink, 1))
+                        {
+                            var box = new RectangleF(measure.Left + 6, layout.StaffTop(system, 0) - 47, width, 20);
+                            g.FillRectangle(fill, box);
+                            g.DrawRectangle(border, box.X, box.Y, box.Width, box.Height);
+                            g.DrawString(mark.Text, small, ink, box, center);
                         }
                     }
                     system++;
@@ -723,3 +740,4 @@ namespace ValeScore
         }
     }
 }
+

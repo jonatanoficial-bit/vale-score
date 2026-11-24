@@ -174,6 +174,7 @@ namespace ValeScore
                 string baseVoice = null;
                 var chords = new Dictionary<int, string>();
                 var dynamics = new Dictionary<Tuple<int, int, string>, string>();
+                var texts = new Dictionary<Tuple<int, int, string>, string>();
                 foreach (var child in measure.Elements())
                 {
                     string kind = child.Name.LocalName;
@@ -191,13 +192,21 @@ namespace ValeScore
                     if (kind == "harmony" || kind == "direction")
                     {
                         var marks = child.Descendants("dynamics").SelectMany(e => e.Elements());
-                        if (kind == "direction" && !marks.Any()) continue;
+                        string dynamic = marks.Select(e => e.Name.LocalName).FirstOrDefault(n => Score.Dynamics.Contains(n));
+                        string words = kind == "direction" ? child.Descendants("words").Select(e => e.Value).FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate)) : null;
+                        string rehearsal = kind == "direction" ? child.Descendants("rehearsal").Select(e => e.Value).FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate)) : null;
+                        if (rehearsal != null)
+                        {
+                            try { result.Project.SetRehearsalMark(bar, rehearsal); }
+                            catch (InvalidOperationException) { result.Omitted++; }
+                        }
+                        if (kind == "direction" && dynamic == null && words == null) continue;
                         int staffNumber = Integer(child.Element("staff"), 1);
                         double atPosition = cursor + Integer(child.Element("offset"), 0) * 4.0 / divisions;
                         int tickOfMark = (int)Math.Round(atPosition, MidpointRounding.AwayFromZero);
-                        string text = kind == "harmony" ? ChordSymbol.Read(child) :
-                            marks.Select(e => e.Name.LocalName).FirstOrDefault(n => Score.Dynamics.Contains(n));
-                        if (staffNumber < 1 || staffNumber > staves || tickOfMark < 0 || tickOfMark >= barTicks || text == null)
+                        string chordText = kind == "harmony" ? ChordSymbol.Read(child) : null;
+                        if (staffNumber < 1 || staffNumber > staves || tickOfMark < 0 || tickOfMark >= barTicks ||
+                            (kind == "harmony" && chordText == null))
                             result.Omitted++;
                         else
                         {
@@ -205,13 +214,21 @@ namespace ValeScore
                             if (kind == "harmony")
                             {
                                 if (chords.ContainsKey(key)) result.Omitted++;
-                                chords[key] = text;
+                                chords[key] = chordText;
                             }
                             else
                             {
                                 var markKey = Tuple.Create(staffNumber - 1, tickOfMark, (string)child.Element("voice"));
-                                if (dynamics.ContainsKey(markKey)) result.Omitted++;
-                                dynamics[markKey] = text;
+                                if (dynamic != null)
+                                {
+                                    if (dynamics.ContainsKey(markKey)) result.Omitted++;
+                                    dynamics[markKey] = dynamic;
+                                }
+                                if (words != null)
+                                {
+                                    if (texts.ContainsKey(markKey)) result.Omitted++;
+                                    texts[markKey] = words;
+                                }
                             }
                         }
                         continue;
@@ -302,7 +319,11 @@ namespace ValeScore
                         var marksOnNote = child.Elements("notations").Elements("articulations").Elements().ToArray();
                         var articulation = marksOnNote.FirstOrDefault(e => Articulations.XmlNames.Contains(e.Name.LocalName));
                         if (articulation != null) result.Project.SetArticulation(part, staff, at, articulation.Name.LocalName, added.Id);
-                        result.Omitted += marksOnNote.Length - (articulation == null ? 0 : 1);
+                        var pause = marksOnNote.FirstOrDefault(e => e.Name.LocalName == "breath-mark" || e.Name.LocalName == "caesura");
+                        bool fermata = child.Elements("notations").Elements("fermata").Any();
+                        if (fermata) result.Project.SetPauseMark(part, staff, at, "fermata", added.Id);
+                        else if (pause != null) result.Project.SetPauseMark(part, staff, at, pause.Name.LocalName, added.Id);
+                        result.Omitted += marksOnNote.Length - (articulation == null ? 0 : 1) - (!fermata && pause != null ? 1 : 0);
                         var lyric = child.Elements("lyric").FirstOrDefault();
                         if (lyric != null)
                         {
@@ -316,11 +337,12 @@ namespace ValeScore
                 }
                 var usedChords = new HashSet<int>();
                 var usedDynamics = new HashSet<Tuple<int, int, string>>();
+                var usedTexts = new HashSet<Tuple<int, int, string>>();
                 for (int staff = 0; staff < staves; staff++)
                 foreach (var note in result.Project.Parts[part].Staves[staff].Where(n => !n.IsRest && n.Tick / barTicks == bar).GroupBy(n => new { n.Tick, n.Voice }).Select(group => group.First()).OrderBy(n => n.Voice))
                 {
                     int key = staff * barTicks + note.Tick % barTicks;
-                    string chord, marking;
+                    string chord, marking, expressionText;
                     if (!chords.TryGetValue(key, out chord) || !usedChords.Add(key)) chord = null;
                     int local = note.Tick % barTicks;
                     var markKey = Tuple.Create(staff, local, voices[staff][note.Voice]);
@@ -330,10 +352,31 @@ namespace ValeScore
                         dynamics.TryGetValue(markKey, out marking);
                     }
                     if (marking != null && !usedDynamics.Add(markKey)) marking = null;
+                    if (!texts.TryGetValue(markKey, out expressionText))
+                    {
+                        markKey = Tuple.Create(staff, local, (string)null);
+                        texts.TryGetValue(markKey, out expressionText);
+                    }
+                    if (expressionText == null)
+                    {
+                        var fallback = texts.FirstOrDefault(item => item.Key.Item1 == staff && item.Key.Item2 == local &&
+                            !usedTexts.Contains(item.Key));
+                        if (fallback.Key != null)
+                        {
+                            markKey = fallback.Key;
+                            expressionText = fallback.Value;
+                        }
+                    }
+                    if (expressionText != null && !usedTexts.Add(markKey)) expressionText = null;
                     if (chord != null || marking != null)
                         result.Project.SetExpression(part, staff, note.Tick, chord, marking, note.Id);
+                    if (expressionText != null)
+                    {
+                        try { result.Project.SetExpressionText(part, staff, note.Tick, expressionText, note.Id); }
+                        catch (InvalidOperationException) { result.Omitted++; }
+                    }
                 }
-                result.Omitted += chords.Count - usedChords.Count + dynamics.Count - usedDynamics.Count;
+                result.Omitted += chords.Count - usedChords.Count + dynamics.Count - usedDynamics.Count + texts.Count - usedTexts.Count;
                 bar++;
             }
             result.Omitted += ties.Count + slurs.Count;
@@ -416,3 +459,4 @@ namespace ValeScore
         }
     }
 }
+

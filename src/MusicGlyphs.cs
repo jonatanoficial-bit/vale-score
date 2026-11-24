@@ -26,6 +26,28 @@ namespace ValeScore
             }
         }
 
+        public static void PauseMark(Graphics g, Brush ink, string mark, float x, float y)
+        {
+            using (var pen = new Pen(ink, 1.45f))
+            {
+                if (mark == "fermata")
+                {
+                    g.DrawArc(pen, x - 8, y - 5, 16, 10, 194, 152);
+                    g.FillEllipse(ink, x - 2.1f, y + 2.2f, 4.2f, 4.2f);
+                }
+                else if (mark == "breath-mark")
+                {
+                    g.DrawBezier(pen, x - 1.5f, y - 7, x + 4.2f, y - 5.5f, x + 3.2f, y + 2.8f, x - .5f, y + 6.3f);
+                    g.DrawLine(pen, x - .5f, y + 6.3f, x - 2.2f, y + 4.2f);
+                }
+                else if (mark == "caesura")
+                {
+                    g.DrawLine(pen, x - 5.5f, y - 7, x - 1.2f, y + 7);
+                    g.DrawLine(pen, x + 1.7f, y - 7, x + 6, y + 7);
+                }
+            }
+        }
+
         public static void Head(Graphics g, Brush ink, float x, float y, int length)
         {
             using (var head = new GraphicsPath(FillMode.Alternate))
@@ -172,3 +194,4 @@ namespace ValeScore
         }
     }
 }
+

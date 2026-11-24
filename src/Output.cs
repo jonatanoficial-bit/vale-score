@@ -286,6 +286,11 @@ namespace ValeScore
                                 xml.WriteEndElement();
                             }
                         }
+                        if (p == 0)
+                        {
+                            var rehearsal = score.RehearsalMarks.Find(mark => mark.Bar == bar);
+                            if (rehearsal != null) WriteRehearsal(xml, rehearsal.Text);
+                        }
                         int start = bar * score.BarTicks;
                         int end = start + score.BarTicks;
                         for (int staff = 0; staff < part.Staves.Count; staff++)
@@ -344,9 +349,11 @@ namespace ValeScore
                 var members = onsets[i];
                 var chordMark = members.Select(n => n.Chord).FirstOrDefault(mark => mark != null);
                 var dynamic = members.Select(n => n.Dynamic).FirstOrDefault(mark => mark != null);
+                var expressionText = members.Select(n => n.ExpressionText).FirstOrDefault(text => text != null);
                 ChordSymbol chord;
                 if (ChordSymbol.TryParse(chordMark, out chord)) chord.Write(xml, staff, piano);
                 if (dynamic != null) WriteDynamic(xml, dynamic, staff, piano, voice);
+                if (expressionText != null) WriteExpressionText(xml, expressionText, staff, piano, voice);
                 foreach (var member in members)
                 {
                     bool extra = member != note;
@@ -380,6 +387,28 @@ namespace ValeScore
             if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
             xml.WriteStartElement("sound");
             xml.WriteAttributeString("dynamics", (Score.Velocity(marking) * 100.0 / 90).ToString("0.##", System.Globalization.CultureInfo.InvariantCulture));
+            xml.WriteEndElement();
+            xml.WriteEndElement();
+        }
+
+        private static void WriteExpressionText(XmlWriter xml, string text, int staff, bool piano, int voice)
+        {
+            xml.WriteStartElement("direction");
+            xml.WriteAttributeString("placement", "above");
+            xml.WriteStartElement("direction-type");
+            xml.WriteElementString("words", text);
+            xml.WriteEndElement();
+            xml.WriteElementString("voice", (staff + 1 + voice * 2).ToString());
+            if (piano) xml.WriteElementString("staff", (staff + 1).ToString());
+            xml.WriteEndElement();
+        }
+
+        private static void WriteRehearsal(XmlWriter xml, string text)
+        {
+            xml.WriteStartElement("direction");
+            xml.WriteAttributeString("placement", "above");
+            xml.WriteStartElement("direction-type");
+            xml.WriteElementString("rehearsal", text);
             xml.WriteEndElement();
             xml.WriteEndElement();
         }
@@ -452,7 +481,10 @@ namespace ValeScore
                     xml.WriteEndElement();
                 }
             }
-            if (tieStart || tieStop || (note != null && note.Articulation != null) ||
+            bool fermata = note != null && note.PauseMark == "fermata";
+            bool breath = note != null && note.PauseMark == "breath-mark";
+            bool caesura = note != null && note.PauseMark == "caesura";
+            if (tieStart || tieStop || (note != null && (note.Articulation != null || fermata || breath || caesura)) ||
                 (slurStarts != null && slurStarts.Any()) || (slurEnds != null && slurEnds.Any()))
             {
                 xml.WriteStartElement("notations");
@@ -460,10 +492,13 @@ namespace ValeScore
                 if (tieStart) WriteTie(xml, "tied", "start");
                 if (slurEnds != null) foreach (var slur in slurEnds) WriteSlur(xml, slur, false);
                 if (slurStarts != null) foreach (var slur in slurStarts) WriteSlur(xml, slur, true);
-                if (note.Articulation != null)
+                if (fermata) xml.WriteElementString("fermata", "");
+                if (note.Articulation != null || breath || caesura)
                 {
                     xml.WriteStartElement("articulations");
-                    xml.WriteElementString(note.Articulation, "");
+                    if (note.Articulation != null) xml.WriteElementString(note.Articulation, "");
+                    if (breath) xml.WriteElementString("breath-mark", "");
+                    if (caesura) xml.WriteElementString("caesura", "");
                     xml.WriteEndElement();
                 }
                 xml.WriteEndElement();
@@ -483,3 +518,4 @@ namespace ValeScore
         }
     }
 }
+

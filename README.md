@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.21.0 · Prévia para Windows x64**
+**0.22.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.21.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.21.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.22.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.22.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -13,6 +13,8 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Editar.** Em **Selecionar** (**V**), clique numa nota ou pausa. A paleta muda a duração da figura selecionada. Em notas, **↑** e **↓** mudam a altura e **♭**, **♮** e **♯** alteram o acidente. Use **Delete** ou **Apagar** (**E**) para retirar a figura.
 - **Ler a partitura.** Colcheias ou semicolcheias consecutivas de mesma duração são ligadas dentro do tempo. As barras de compasso unem as duas pautas do piano.
 - **Colocar letra.** Selecione uma nota e pressione **Shift+L**. Digite sob a pauta. **Espaço** encerra a palavra e **hífen** separa sílabas. Ambos avançam para a próxima nota na mesma pauta. **Enter** confirma, **Esc** cancela o texto atual e **Shift+Tab** volta à nota anterior.
+- **Marcar a interpretação.** Selecione uma nota e use **Expressão da nota** ou **Ctrl+H** para inserir texto como “dolce” ou “pizz.”, além de cifra, dinâmica e articulação. A área **Sinais** traz fermata, respiração e cesura como desenhos musicais; a fermata prolonga a nota no áudio/MIDI.
+- **Organizar o ensaio.** Use **Marca de ensaio** para criar um identificador no compasso atual. Ele acompanha inserção, cópia, duplicação e remoção de compassos.
 - **Navegar.** Use o zoom e as setas de página na barra inferior. **F1** abre a lista de atalhos.
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
 - **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
@@ -33,6 +35,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.22
+
+- **Fermata, respiração e cesura** agora são sinais gráficos na paleta e no diálogo de expressão. O projeto, a partitura e MusicXML/MXL preservam os três; a fermata amplia a sustentação no WAV e no MIDI.
+- **Texto expressivo** permite registrar instruções técnicas e interpretativas acima da pauta, como “dolce”, “pizz.” ou “con sordino”.
+- **Marcas de ensaio** aparecem no início do compasso, acompanham as operações estruturais e são trocadas por MusicXML.
+- A suíte cobre persistência nativa, desenho, reprodução MIDI e intercâmbio de todos esses recursos.
 
 ## Novidades da 0.21
 
@@ -147,3 +156,4 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 ## Formato de projeto
 
 JSON UTF-8, versão de esquema `8`. A versão 0.11 abre projetos dos esquemas 1 a 7 e grava no esquema 8. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+

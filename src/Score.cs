@@ -22,6 +22,8 @@ namespace ValeScore
         [DataMember(EmitDefaultValue = false)] public string Chord;
         [DataMember(EmitDefaultValue = false)] public string Dynamic;
         [DataMember(EmitDefaultValue = false)] public string Articulation;
+        [DataMember(EmitDefaultValue = false)] public string ExpressionText;
+        [DataMember(EmitDefaultValue = false)] public string PauseMark;
         [DataMember(EmitDefaultValue = false)] public bool IsRest;
         [DataMember(EmitDefaultValue = false)] public Guid? TiedTo;
         [DataMember(EmitDefaultValue = false)] public List<Guid> SlursTo;
@@ -42,6 +44,13 @@ namespace ValeScore
         [DataMember(EmitDefaultValue = false)] public bool Solo;
         [DataMember(EmitDefaultValue = false)] public int Pan;
         [DataMember] public List<List<Note>> Staves;
+    }
+
+    [DataContract]
+    public sealed class RehearsalMark
+    {
+        [DataMember] public int Bar;
+        [DataMember] public string Text;
     }
 
     [DataContract]
@@ -72,9 +81,11 @@ namespace ValeScore
             PruneNoteLinks();
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 14;
+        public const int CurrentVersion = 15;
         public const int VoicesPerStaff = 2;
         public const int MaxChordNotes = 8;
+        public const int MaxExpressionTextLength = 48;
+        public const int MaxRehearsalTextLength = 16;
         private const int MaxProjectBytes = 48 * 1024 * 1024;
         [DataMember(EmitDefaultValue = false)] public int Fifths;
         [DataMember(EmitDefaultValue = false)] public bool MinorKey;
@@ -133,6 +144,7 @@ namespace ValeScore
         [DataMember] public int Tempo = 96;
         [DataMember] public int Bars = 4;
         [DataMember] public List<Part> Parts = new List<Part>();
+        [DataMember(EmitDefaultValue = false)] public List<RehearsalMark> RehearsalMarks = new List<RehearsalMark>();
 
         public static Score New(bool example)
         {
@@ -242,6 +254,8 @@ namespace ValeScore
                     note.Chord = previous.Chord;
                     note.Dynamic = previous.Dynamic;
                     note.Articulation = previous.Articulation;
+                    note.ExpressionText = previous.ExpressionText;
+                    note.PauseMark = previous.PauseMark;
                     note.Courtesy = previous.Courtesy;
                     note.TiedTo = previous.TiedTo;
                     note.SlursTo = previous.SlursTo;
@@ -325,6 +339,36 @@ namespace ValeScore
             note.Articulation = articulation;
         }
 
+        public void SetExpressionText(int part, int staff, int tick, string text, Guid id = default(Guid))
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty ? n.Voice == 0 : n.Id == id));
+            if (note == null) throw new InvalidOperationException("Selecione uma nota para adicionar texto expressivo.");
+            note.ExpressionText = NormalizeDisplayText(text, MaxExpressionTextLength, "O texto expressivo aceita até 48 caracteres.");
+        }
+
+        public void SetPauseMark(int part, int staff, int tick, string mark, Guid id = default(Guid))
+        {
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty ? n.Voice == 0 : n.Id == id));
+            if (note == null) throw new InvalidOperationException("Selecione uma nota para adicionar um sinal de pausa.");
+            if (mark != null && !PauseMarks.Names.Contains(mark)) throw new InvalidOperationException("Sinal de pausa inválido.");
+            note.PauseMark = mark;
+        }
+
+        public void SetRehearsalMark(int bar, string text)
+        {
+            if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
+            string clean = NormalizeDisplayText(text, MaxRehearsalTextLength, "A marca de ensaio aceita até 16 caracteres.");
+            var existing = RehearsalMarks.Find(mark => mark.Bar == bar);
+            if (clean == null)
+            {
+                if (existing != null) RehearsalMarks.Remove(existing);
+                return;
+            }
+            if (existing == null) RehearsalMarks.Add(new RehearsalMark { Bar = bar, Text = clean });
+            else existing.Text = clean;
+            RehearsalMarks.Sort((left, right) => left.Bar.CompareTo(right.Bar));
+        }
+
         public void SetLyric(int part, int staff, int tick, string text, bool hyphenAfter, Guid id = default(Guid))
         {
             var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && (id == Guid.Empty ? n.Voice == 0 : n.Id == id));
@@ -345,16 +389,35 @@ namespace ValeScore
             catch (System.Xml.XmlException) { return false; }
         }
 
+        private static string NormalizeDisplayText(string text, int maximum, string message)
+        {
+            string clean = string.IsNullOrWhiteSpace(text) ? null : text.Trim();
+            if (clean == null) return null;
+            if (!ValidDisplayText(clean, maximum)) throw new InvalidOperationException(message);
+            return clean;
+        }
+
+        private static bool ValidDisplayText(string text, int maximum)
+        {
+            if (text == null) return true;
+            if (text.Length == 0 || text.Length > maximum || text.Any(char.IsControl)) return false;
+            try { System.Xml.XmlConvert.VerifyXmlChars(text); return true; }
+            catch (System.Xml.XmlException) { return false; }
+        }
+
         private bool ValidNote(Note n)
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 || n.Voice < 0 || n.Voice >= VoicesPerStaff ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
             if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter &&
-                n.Chord == null && n.Dynamic == null && n.Articulation == null && !n.Courtesy && !n.TiedTo.HasValue && n.SlursTo == null;
+                n.Chord == null && n.Dynamic == null && n.Articulation == null && n.ExpressionText == null && n.PauseMark == null &&
+                !n.Courtesy && !n.TiedTo.HasValue && n.SlursTo == null;
             ChordSymbol symbol;
             if ((n.Chord != null && !ChordSymbol.TryParse(n.Chord, out symbol)) ||
                 (n.Dynamic != null && !Dynamics.Contains(n.Dynamic)) ||
-                (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation))) return false;
+                (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation)) ||
+                !ValidDisplayText(n.ExpressionText, MaxExpressionTextLength) ||
+                (n.PauseMark != null && !PauseMarks.Names.Contains(n.PauseMark))) return false;
             return n.Step >= 0 && n.Step <= 69 && n.Alter >= -2 && n.Alter <= 2 && n.Midi >= 0 && n.Midi <= 127;
         }
 
@@ -395,6 +458,7 @@ namespace ValeScore
             if (Bars >= MaxBars) throw new InvalidOperationException("Limite de compassos atingido.");
             foreach (var note in Parts.SelectMany(p => p.Staves).SelectMany(staff => staff))
                 if (note.Tick >= bar * BarTicks) note.Tick += BarTicks;
+            foreach (var mark in RehearsalMarks.Where(mark => mark.Bar >= bar)) mark.Bar++;
             Bars++;
             PruneNoteLinks();
         }
@@ -410,6 +474,8 @@ namespace ValeScore
                 foreach (var note in staff)
                     if (note.Tick >= end) note.Tick -= BarTicks;
             }
+            RehearsalMarks.RemoveAll(mark => mark.Bar == bar);
+            foreach (var mark in RehearsalMarks.Where(mark => mark.Bar > bar)) mark.Bar--;
             Bars--;
             PruneNoteLinks();
         }
@@ -478,6 +544,10 @@ namespace ValeScore
                 staff.AddRange(copies);
                 SortByTick(staff);
             }
+            foreach (var mark in RehearsalMarks.Where(mark => mark.Bar > bar)) mark.Bar++;
+            var copiedMark = RehearsalMarks.Find(mark => mark.Bar == bar);
+            if (copiedMark != null) RehearsalMarks.Add(new RehearsalMark { Bar = bar + 1, Text = copiedMark.Text });
+            RehearsalMarks.Sort((left, right) => left.Bar.CompareTo(right.Bar));
             Bars++;
             PruneNoteLinks();
         }
@@ -489,7 +559,8 @@ namespace ValeScore
             {
                 Tick = n.Tick + delta, Length = n.Length, Step = n.Step, Alter = n.Alter, Voice = n.Voice,
                 IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
-                Dynamic = n.Dynamic, Articulation = n.Articulation, Courtesy = n.Courtesy, TiedTo = n.TiedTo, SlursTo = n.SlursTo
+                Dynamic = n.Dynamic, Articulation = n.Articulation, ExpressionText = n.ExpressionText, PauseMark = n.PauseMark,
+                Courtesy = n.Courtesy, TiedTo = n.TiedTo, SlursTo = n.SlursTo
             });
             foreach (var copy in copies.Values)
             {
@@ -522,6 +593,8 @@ namespace ValeScore
                 staff.RemoveAll(n => n.Tick < start || n.Tick >= start + BarTicks);
                 foreach (var note in staff) note.Tick -= start;
             }
+            copy.RehearsalMarks.RemoveAll(mark => mark.Bar != bar);
+            foreach (var mark in copy.RehearsalMarks) mark.Bar = 0;
             copy.PruneNoteLinks();
             copy.Bars = 1;
             return copy;
@@ -544,6 +617,9 @@ namespace ValeScore
                 SortByTick(staff);
                 PruneStaffLinks(staff);
             }
+            RehearsalMarks.RemoveAll(mark => mark.Bar == bar);
+            var copiedMark = copy.RehearsalMarks.Find(mark => mark.Bar == 0);
+            if (copiedMark != null) RehearsalMarks.Add(new RehearsalMark { Bar = bar, Text = copiedMark.Text });
         }
 
         public Score ExtractPart(int index)
@@ -562,6 +638,7 @@ namespace ValeScore
             copy.Title = "Partitura sem título";
             copy.Author = "";
             foreach (var staff in copy.Parts.SelectMany(part => part.Staves)) staff.Clear();
+            copy.RehearsalMarks.Clear();
             return copy;
         }
 
@@ -592,6 +669,8 @@ namespace ValeScore
                 staff.RemoveAll(n => n.Tick < start || n.Tick >= end);
                 foreach (var note in staff) note.Tick -= start;
             }
+            copy.RehearsalMarks.RemoveAll(mark => mark.Bar < first || mark.Bar > last);
+            foreach (var mark in copy.RehearsalMarks) mark.Bar -= first;
             copy.PruneNoteLinks();
             copy.Bars = last - first + 1;
             return copy;
@@ -635,10 +714,13 @@ namespace ValeScore
         {
             if (Version != CurrentVersion || Fifths < -7 || Fifths > 7 || !SupportsMeter(Beats, BeatType) || Bars < 1 || Bars > MaxBars || Tempo < 30 || Tempo > 240 ||
                 string.IsNullOrWhiteSpace(Title) || Title.Length > 80 || Author == null || Author.Length > 80 ||
-                Parts == null || Parts.Count < 1 || Parts.Count > 4)
+                Parts == null || Parts.Count < 1 || Parts.Count > 4 || RehearsalMarks == null)
                 throw new InvalidDataException("Projeto inválido ou versão de arquivo incompatível.");
 
             var ids = new HashSet<Guid>();
+            if (RehearsalMarks.Count > Bars || RehearsalMarks.Any(mark => mark == null || mark.Bar < 0 || mark.Bar >= Bars ||
+                !ValidDisplayText(mark.Text, MaxRehearsalTextLength)) || RehearsalMarks.GroupBy(mark => mark.Bar).Any(group => group.Count() > 1))
+                throw new InvalidDataException("Marca de ensaio inválida.");
             foreach (var p in Parts)
             {
                 if (p == null || p.Pan < -100 || p.Pan > 100 || (p.Volume.HasValue && (p.Volume.Value < 0 || p.Volume.Value > 100)) || string.IsNullOrWhiteSpace(p.Name) || p.Name.Length > 40 ||
@@ -725,6 +807,7 @@ namespace ValeScore
                     if (score.Version >= 1 && score.Version < CurrentVersion)
                     {
                         if (score.Version < 7) { score.Beats = 4; score.BeatType = 4; }
+                        if (score.RehearsalMarks == null) score.RehearsalMarks = new List<RehearsalMark>();
                         score.Version = CurrentVersion;
                     }
                     score.Validate();
@@ -774,3 +857,4 @@ namespace ValeScore
         }
     }
 }
+

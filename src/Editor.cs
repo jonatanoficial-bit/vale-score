@@ -130,7 +130,8 @@ namespace ValeScore
             Item(edit, "Escrever acorde", Keys.None, () => SetMode(EditMode.Chord)).ShortcutKeyDisplayString = "K";
             Item(edit, "Editar letra da nota", Keys.None, StartLyrics).ShortcutKeyDisplayString = "Shift+L";
             Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
-            Item(edit, "Cifra, dinâmica e articulação…", Keys.Control | Keys.H, EditExpression);
+            Item(edit, "Expressões e sinais da nota…", Keys.Control | Keys.H, EditExpression);
+            Item(edit, "Marca de ensaio do compasso…", Keys.None, EditRehearsalMark);
             var articulationMenu = new ToolStripMenuItem("Articulação da nota") { ForeColor = TextColor };
             for (int i = 0; i < Articulations.Names.Length; i++)
             {
@@ -139,6 +140,12 @@ namespace ValeScore
             }
             Item(articulationMenu, "Remover articulação", Keys.None, () => ChangeArticulation(null));
             edit.DropDownItems.Add(articulationMenu);
+            var pauseMenu = new ToolStripMenuItem("Sinal de pausa da nota") { ForeColor = TextColor };
+            Item(pauseMenu, "Fermata", Keys.None, () => ChangePauseMark("fermata"));
+            Item(pauseMenu, "Respiração", Keys.None, () => ChangePauseMark("breath-mark"));
+            Item(pauseMenu, "Cesura", Keys.None, () => ChangePauseMark("caesura"));
+            Item(pauseMenu, "Remover sinal de pausa", Keys.None, () => ChangePauseMark(null));
+            edit.DropDownItems.Add(pauseMenu);
             Item(edit, "Propriedades da partitura…", Keys.None, Properties);
             Item(edit, "Renomear instrumento selecionado…", Keys.None, RenameSelectedPart);
             Item(edit, "Fórmula de compasso…", Keys.None, EditMeter);
@@ -169,6 +176,7 @@ namespace ValeScore
                 "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
                 "Shift+T liga à próxima nota de mesma altura e voz. Repita para remover.\n" +
                 "Shift+S marca o início da frase. Clique na última nota ou selecione-a pelo teclado e pressione Shift+S.\n" +
+                "Ctrl+H abre expressões, texto técnico e sinais de pausa. A paleta Sinais também inclui fermata, respiração e cesura.\n" +
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
@@ -277,6 +285,7 @@ namespace ValeScore
             eraseNoteButton = Button("Apagar seleção", RemoveNote);
             sidebar.Controls.Add(editLyricButton);
             sidebar.Controls.Add(Button("Expressão da nota", EditExpression));
+            sidebar.Controls.Add(Button("Marca de ensaio", EditRehearsalMark));
             sidebar.Controls.Add(eraseNoteButton);
 
             var modes = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(12, 5, 0, 0),
@@ -324,11 +333,17 @@ namespace ValeScore
             });
             AddMusicButton(dots, (MusicButton)dotButton, "Ponto de aumento (.)", () => ApplyDots(1));
             AddMusicButton(dots, (MusicButton)doubleDotButton, "Dois pontos de aumento", () => ApplyDots(2));
-            var signs = AddPaletteGroup("SINAIS", 2);
+            var signs = AddPaletteGroup("SINAIS", 5);
             tieButton = new MusicButton((g, ink) => MusicGlyphs.Tie(g, ink, -11, 11, 1, -1));
             AddMusicButton(signs, (MusicButton)tieButton, "Ligadura de prolongamento (Shift+T)", ToggleTie);
             slurButton = new MusicButton((g, ink) => MusicGlyphs.Arc(g, ink, -12, 5, 12, 2, -12, 2.4f));
             AddMusicButton(signs, (MusicButton)slurButton, "Ligadura de expressão (Shift+S)", SetSlurEndpoint);
+            AddMusicButton(signs, new MusicButton((g, ink) => MusicGlyphs.PauseMark(g, ink, "fermata", 0, 0)),
+                "Fermata", () => ChangePauseMark("fermata"));
+            AddMusicButton(signs, new MusicButton((g, ink) => MusicGlyphs.PauseMark(g, ink, "breath-mark", 0, 0)),
+                "Respiração", () => ChangePauseMark("breath-mark"));
+            AddMusicButton(signs, new MusicButton((g, ink) => MusicGlyphs.PauseMark(g, ink, "caesura", 0, 0)),
+                "Cesura", () => ChangePauseMark("caesura"));
             Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); recoveryTimer.Dispose(); };
 
             var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
@@ -759,8 +774,8 @@ namespace ValeScore
         {
             if (!CommitLyric()) return;
             var note = SelectedNote();
-            if (note == null) { Report("Selecione uma nota para editar cifra e dinâmica."); return; }
-            using (var dialog = new Form { Text = "Expressão da nota", ClientSize = new Size(382, 207),
+            if (note == null) { Report("Selecione uma nota para editar expressões e sinais."); return; }
+            using (var dialog = new Form { Text = "Expressões e sinais", ClientSize = new Size(410, 294),
                 StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false, MinimizeBox = false, Font = Font })
             {
@@ -776,16 +791,26 @@ namespace ValeScore
                 articulation.Items.Add("Sem articulação");
                 articulation.Items.AddRange(Articulations.Names);
                 articulation.SelectedIndex = Array.IndexOf(Articulations.XmlNames, note.Articulation) + 1;
-                var save = new Button { Text = "Aplicar", Bounds = new Rectangle(182, 155, 84, 30) };
-                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(276, 155, 85, 30) };
+                var text = new TextBox { Text = note.ExpressionText ?? "", MaxLength = Score.MaxExpressionTextLength,
+                    AccessibleName = "Texto expressivo ou instrução técnica", Bounds = new Rectangle(160, 144, 229, 27) };
+                var pause = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Sinal de pausa",
+                    Bounds = new Rectangle(160, 186, 229, 28) };
+                pause.Items.Add("Sem sinal de pausa");
+                pause.Items.AddRange(new object[] { "Fermata", "Respiração", "Cesura" });
+                pause.SelectedIndex = Array.IndexOf(PauseMarks.Names, note.PauseMark) + 1;
+                var save = new Button { Text = "Aplicar", Bounds = new Rectangle(210, 244, 84, 30) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(304, 244, 85, 30) };
                 save.Click += delegate
                 {
                     string marking = dynamic.SelectedIndex == 0 ? null : Score.Dynamics[dynamic.SelectedIndex - 1];
                     string selectedArticulation = articulation.SelectedIndex == 0 ? null : Articulations.XmlNames[articulation.SelectedIndex - 1];
+                    string selectedPause = pause.SelectedIndex == 0 ? null : PauseMarks.Names[pause.SelectedIndex - 1];
                     if (Change(() =>
                     {
                         score.SetExpression(position.Part, position.Staff, position.Tick, chord.Text, marking, note.Id);
                         score.SetArticulation(position.Part, position.Staff, position.Tick, selectedArticulation, note.Id);
+                        score.SetExpressionText(position.Part, position.Staff, position.Tick, text.Text, note.Id);
+                        score.SetPauseMark(position.Part, position.Staff, position.Tick, selectedPause, note.Id);
                     }))
                         dialog.DialogResult = DialogResult.OK;
                     else MessageBox.Show(dialog, status.Text);
@@ -793,7 +818,37 @@ namespace ValeScore
                 dialog.Controls.AddRange(new Control[] {
                     new Label { Text = "Cifra (ex. G7/B)", AutoSize = true, Location = new Point(16, 18) }, chord,
                     new Label { Text = "Dinâmica", AutoSize = true, Location = new Point(16, 62) }, dynamic,
-                    new Label { Text = "Articulação", AutoSize = true, Location = new Point(16, 104) }, articulation, save, cancel
+                    new Label { Text = "Articulação", AutoSize = true, Location = new Point(16, 104) }, articulation,
+                    new Label { Text = "Texto expressivo", AutoSize = true, Location = new Point(16, 146) }, text,
+                    new Label { Text = "Sinal de pausa", AutoSize = true, Location = new Point(16, 188) }, pause, save, cancel
+                });
+                dialog.AcceptButton = save;
+                dialog.CancelButton = cancel;
+                dialog.ShowDialog(this);
+            }
+        }
+
+        private void EditRehearsalMark()
+        {
+            if (!CommitLyric()) return;
+            int bar = position.Tick / score.BarTicks;
+            var mark = score.RehearsalMarks.Find(item => item.Bar == bar);
+            using (var dialog = new Form { Text = "Marca de ensaio", ClientSize = new Size(380, 142),
+                StartPosition = FormStartPosition.CenterParent, FormBorderStyle = FormBorderStyle.FixedDialog,
+                MaximizeBox = false, MinimizeBox = false, Font = Font })
+            {
+                var text = new TextBox { Text = mark == null ? "" : mark.Text, MaxLength = Score.MaxRehearsalTextLength,
+                    AccessibleName = "Marca de ensaio", Bounds = new Rectangle(18, 47, 343, 27) };
+                var save = new Button { Text = "Aplicar", Bounds = new Rectangle(182, 94, 84, 30) };
+                var cancel = new Button { Text = "Cancelar", DialogResult = DialogResult.Cancel, Bounds = new Rectangle(276, 94, 85, 30) };
+                save.Click += delegate
+                {
+                    if (Change(() => score.SetRehearsalMark(bar, text.Text))) dialog.DialogResult = DialogResult.OK;
+                    else MessageBox.Show(dialog, status.Text);
+                };
+                dialog.Controls.AddRange(new Control[] {
+                    new Label { Text = "Compasso " + (bar + 1) + " · deixe vazio para remover", AutoSize = true, Location = new Point(18, 18) },
+                    text, save, cancel
                 });
                 dialog.AcceptButton = save;
                 dialog.CancelButton = cancel;
@@ -919,6 +974,15 @@ namespace ValeScore
             var note = SelectedNote();
             if (note == null) { Report("Selecione uma nota para editar a articulação."); return; }
             Change(() => score.SetArticulation(position.Part, position.Staff, position.Tick, mark, note.Id));
+        }
+
+        private void ChangePauseMark(string mark)
+        {
+            if (!CommitLyric()) return;
+            var note = SelectedNote();
+            if (note == null) { Report("Selecione uma nota para editar o sinal de pausa."); return; }
+            if (Change(() => score.SetPauseMark(position.Part, position.Staff, position.Tick, mark, note.Id)))
+                Report(mark == null ? "Sinal de pausa removido" : "Sinal de pausa inserido");
         }
 
         private bool MoveToAdjacentNote(int direction)
@@ -2208,3 +2272,4 @@ namespace ValeScore
         }
     }
 }
+

@@ -344,6 +344,64 @@ internal static class Smoke
             Assert(wave.ToArray().Skip(44).Any(b => b != 0), "Acorde produz sinal no sintetizador interno");
     }
 
+    private static void ExpressionMarkChecks(string directory)
+    {
+        var score = Score.New(false);
+        score.Put(0, 0, 0, 4, 28, 0);
+        score.Put(0, 0, 4, 4, 30, 0);
+        score.Put(0, 0, 8, 4, 32, 0);
+        score.SetPauseMark(0, 0, 0, "fermata");
+        score.SetPauseMark(0, 0, 4, "breath-mark");
+        score.SetPauseMark(0, 0, 8, "caesura");
+        score.SetExpressionText(0, 0, 4, "dolce, legato");
+        score.SetRehearsalMark(0, "A");
+        score.SetRehearsalMark(1, "B");
+        score.Validate();
+        var native = Score.Restore(score.Snapshot());
+        Assert(native.RehearsalMarks.Select(mark => mark.Text).SequenceEqual(new[] { "A", "B" }) &&
+            native.Parts[0].Staves[0].Select(note => note.PauseMark).SequenceEqual(new[] { "fermata", "breath-mark", "caesura" }) &&
+            native.Parts[0].Staves[0][1].ExpressionText == "dolce, legato",
+            "Projeto preserva marcas de ensaio, textos expressivos e sinais de pausa");
+
+        using (var midi = new MemoryStream())
+        {
+            MidiSequence.Export(score, midi);
+            midi.Position = 0;
+            var releases = MidiSequence.Read(midi).Events.Where(item => (item.Status & 240) == 0x80).ToArray();
+            Assert(releases.Any(item => item.Data1 == native.Parts[0].Staves[0][0].Midi && item.Tick == 648),
+                "Fermata prolonga a nota na reprodução MIDI");
+        }
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(score, xml);
+            xml.Position = 0;
+            var written = XDocument.Load(xml);
+            Assert(written.Descendants("rehearsal").Select(mark => mark.Value).SequenceEqual(new[] { "A", "B" }) &&
+                written.Descendants("words").Any(mark => mark.Value == "dolce, legato") &&
+                written.Descendants("fermata").Any() && written.Descendants("breath-mark").Any() && written.Descendants("caesura").Any(),
+                "MusicXML exporta marcas, textos e sinais de pausa estruturados");
+            xml.Position = 0;
+            var imported = MusicXmlImport.Read(xml, "Expressões");
+            var lane = imported.Project.Parts[0].Staves[0];
+            Assert(imported.Omitted == 0 && imported.Project.RehearsalMarks.Select(mark => mark.Text).SequenceEqual(new[] { "A", "B" }) &&
+                lane.Where(note => !note.IsRest).Select(note => note.PauseMark).SequenceEqual(new[] { "fermata", "breath-mark", "caesura" }) &&
+                lane.First(note => !note.IsRest && note.Tick == 4).ExpressionText == "dolce, legato", "MusicXML reimporta marcas, textos e sinais de pausa");
+        }
+        var duplicate = Score.Restore(score.Snapshot());
+        duplicate.DuplicateBar(0);
+        Assert(duplicate.RehearsalMarks.Select(mark => mark.Bar + mark.Text).SequenceEqual(new[] { "0A", "1A", "2B" }),
+            "Duplicar compasso reposiciona e replica a marca de ensaio");
+        using (var image = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var canvas = Graphics.FromImage(image))
+        {
+            ScorePage.Draw(canvas, score, 0, null, -1);
+            Assert(Enumerable.Range(ScoreLayout.FirstStaffTop - 50, 22).Any(y =>
+                Enumerable.Range(50, 42).Any(x => image.GetPixel(x, y).R < 180)),
+                "Gravação desenha marca de ensaio e símbolos expressivos");
+            image.Save(Path.Combine(directory, "marcas-expressoes.png"));
+        }
+    }
+
     private static void Run(string directory)
     {
         var mix = Score.New(true);
@@ -389,6 +447,7 @@ internal static class Smoke
         }
         SlurChecks(directory);
         TieChecks(directory);
+        ExpressionMarkChecks(directory);
         VoiceChecks(directory);
         ChordChecks(directory);
         var score = Score.New(true);
@@ -994,9 +1053,11 @@ internal static class Smoke
             var pauseButtons = (System.Collections.Generic.List<Button>)type.GetField("restButtons", flags).GetValue(editor);
             var signs = (System.Collections.Generic.List<Button>)type.GetField("accidentalButtons", flags).GetValue(editor);
             var dots = (Button)type.GetField("dotButton", flags).GetValue(editor);
-            Assert(noteButtons.Count == 5 && pauseButtons.Count == 5 && signs.Count == 3 &&
-                noteButtons.Concat(pauseButtons).Concat(signs).All(b => b.Text.Length == 0 && !string.IsNullOrWhiteSpace(b.AccessibleName)),
-                "Paleta tem 13 símbolos com nomes acessíveis");
+            var pauseSymbols = Descendants(editor).OfType<Button>().Where(button =>
+                button.AccessibleName == "Fermata" || button.AccessibleName == "Respiração" || button.AccessibleName == "Cesura").ToArray();
+            Assert(noteButtons.Count == 5 && pauseButtons.Count == 5 && signs.Count == 3 && pauseSymbols.Length == 3 &&
+                noteButtons.Concat(pauseButtons).Concat(signs).Concat(pauseSymbols).All(b => b.Text.Length == 0 && !string.IsNullOrWhiteSpace(b.AccessibleName)),
+                "Paleta tem figuras musicais e novos sinais com nomes acessíveis");
             using (var whole = new Bitmap(pauseButtons[0].Width, pauseButtons[0].Height))
             using (var half = new Bitmap(pauseButtons[1].Width, pauseButtons[1].Height))
             {
@@ -1158,3 +1219,4 @@ internal static class Smoke
         }
     }
 }
+

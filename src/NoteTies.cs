@@ -40,9 +40,11 @@ namespace ValeScore
                 if (note.IsRest) continue;
                 int length = note.Length + (note.TiedTo.HasValue ? sustained[note.TiedTo.Value] : 0);
                 if (continuations.Contains(note.Id)) sustained.Add(note.Id, length);
-                else lengths.Add(note.Id, note.TiedTo.HasValue ? length : length * Articulations.SoundLength(note.Articulation));
+                else lengths.Add(note.Id, note.TiedTo.HasValue ? length :
+                    length * Articulations.SoundLength(note.Articulation) * PauseMarks.SoundLength(note.PauseMark));
             }
             return lengths;
         }
     }
 }
+

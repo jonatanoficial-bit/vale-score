@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.21.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio e a edição de notas, pausas e letras. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.22.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio e sinais de pausa. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -95,13 +95,13 @@ Base da matriz: prévia 0.21.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | --- | --- | --- | --- |
 | 05.01 | Staccato, staccatissimo, tenuto, marcato e acentos | Parcial | Uma marca por nota. [Testes de intercâmbio e reprodução](tests/Smoke.cs). |
 | 05.02 | Ligaduras de expressão e prolongamento | Parcial | [Suíte Windows](tests/Smoke.cs). Prolongamento com reprodução e ligaduras de expressão na mesma pauta e voz. Ambas têm intercâmbio MusicXML/MXL. Ajuste manual e expressão entre pautas pendentes. |
-| 05.03 | Fermatas, respirações e cesuras | Pendente | |
+| 05.03 | Fermatas, respirações e cesuras | Parcial | Fermata, respiração e cesura por nota, com desenho, salvamento e MusicXML/MXL. Fermata sustenta no WAV/MIDI; pausa temporal entre eventos e variações gráficas pendentes. [Testes](tests/Smoke.cs). |
 | 05.04 | Trinados, mordentes e ornamentos | Pendente | |
 | 05.05 | Glissandi, portamenti e arpejos | Pendente | |
 | 05.06 | Tremolos de uma e várias notas | Pendente | |
 | 05.07 | Dinâmicas de ppp a fff e níveis adicionais | Parcial | [Testes de MIDI, WAV e MusicXML](tests/Smoke.cs). Oito níveis de ppp a fff, sem níveis personalizados. |
 | 05.08 | Crescendos, diminuendos e hairpins | Pendente | |
-| 05.09 | Textos expressivos e instruções técnicas | Pendente | |
+| 05.09 | Textos expressivos e instruções técnicas | Parcial | Texto acima da pauta associado à nota, salvo e trocado por MusicXML/MXL. Estilos, posicionamento manual e linhas extensíveis pendentes. [Testes](tests/Smoke.cs). |
 | 05.10 | Mudanças de tempo, ritardando e accelerando | Pendente | |
 | 05.11 | Linhas de oitava, pedais e indicações de execução | Pendente | |
 | 05.12 | Técnicas personalizadas e símbolos gráficos | Pendente | |
@@ -149,8 +149,8 @@ Base da matriz: prévia 0.21.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 08.02 | Melismas, hifens e extensores silábicos | Parcial | |
 | 08.03 | Coral SATB e sistemas vocais complexos | Pendente | |
 | 08.04 | Nomes de cantores e indicações de solista | Pendente | |
-| 08.05 | Texto de sistema, pauta e expressão | Pendente | |
-| 08.06 | Marcas de ensaio e numeração de compassos | Parcial | |
+| 08.05 | Texto de sistema, pauta e expressão | Parcial | Texto expressivo de pauta associado à nota, com persistência e MusicXML. Texto de sistema geral e estilos globais pendentes. [Testes](tests/Smoke.cs). |
+| 08.06 | Marcas de ensaio e numeração de compassos | Parcial | Marcas de ensaio por compasso, números de compasso e intercâmbio MusicXML. Estilo, sequências automáticas e referências avançadas pendentes. [Testes](tests/Smoke.cs). |
 | 08.07 | Títulos, subtítulos, dedicatórias e créditos | Parcial | |
 | 08.08 | Cabeçalhos, rodapés e numeração de páginas | Parcial | |
 | 08.09 | Fontes de texto, estilos e formatação global | Pendente | |
@@ -241,7 +241,7 @@ Base da matriz: prévia 0.21.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 13.01 | Materiais para alunos e exercícios de teoria | Pendente | |
 | 13.02 | Partituras simplificadas e versões alternativas | Pendente | |
 | 13.03 | Partes individuais para ensaios | Parcial | [Extração de instrumento](tests/Smoke.cs). Exportação MusicXML independente. Layout de partes vinculado pendente. |
-| 13.04 | Indicações de ensaio e referências de compasso | Pendente | |
+| 13.04 | Indicações de ensaio e referências de compasso | Parcial | Marca textual por compasso, preservada em operações estruturais e MusicXML. Referências cruzadas e numeração avançada pendentes. [Testes](tests/Smoke.cs). |
 | 13.05 | Metrônomo e reprodução em velocidade ajustada | Parcial | Metrônomo com som interno e velocidade da partitura de 50% a 150%. [Testes](tests/Smoke.cs). |
 | 13.06 | Loop de trechos para estudo | Parcial | Ctrl+J configura o trecho e o loop por compasso. [Testes](tests/Smoke.cs). |
 | 13.07 | Acompanhamento por instrumentos virtuais | Parcial | |
@@ -286,3 +286,4 @@ Base da matriz: prévia 0.21.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 15.13 | Compatibilidade real com Kontakt/Reason somente após ensaios | Pendente | |
 | 15.14 | Controle de desempenho e estabilidade em máquinas modestas | Pendente | |
 | 15.15 | Auditoria de licenças e distribuição comercial | Pendente | |
+
