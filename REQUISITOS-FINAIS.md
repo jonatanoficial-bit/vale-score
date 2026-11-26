@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.22.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio e sinais de pausa. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.23.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio e sinais de pausa. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 

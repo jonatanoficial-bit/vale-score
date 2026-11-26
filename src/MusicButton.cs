@@ -12,7 +12,7 @@ namespace ValeScore
         public MusicButton(Action<Graphics, Brush> draw)
         {
             this.draw = draw;
-            Size = new Size(33, 37);
+            Size = new Size(34, 38);
             Margin = new Padding(1, 1, 1, 1);
             FlatStyle = FlatStyle.Flat;
             FlatAppearance.BorderSize = 1;
@@ -24,8 +24,8 @@ namespace ValeScore
             base.OnPaint(e);
             var state = e.Graphics.Save();
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-            e.Graphics.TranslateTransform(ClientSize.Width / 2f, ClientSize.Height / 2f);
-            e.Graphics.ScaleTransform(ClientSize.Height / 41f, ClientSize.Height / 41f);
+            e.Graphics.TranslateTransform(ClientSize.Width / 2f, ClientSize.Height / 2f + .5f);
+            e.Graphics.ScaleTransform(ClientSize.Height / 42f, ClientSize.Height / 42f);
             using (var ink = new SolidBrush(GlyphColor)) draw(e.Graphics, ink);
             e.Graphics.Restore(state);
         }
@@ -54,3 +54,4 @@ namespace ValeScore
         }
     }
 }
+

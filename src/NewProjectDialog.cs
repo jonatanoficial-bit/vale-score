@@ -22,8 +22,8 @@ namespace ValeScore
             MinimizeBox = false;
             MaximizeBox = false;
             Font = new Font("Segoe UI", 10);
-            BackColor = Color.FromArgb(25, 38, 47);
-            ForeColor = Color.FromArgb(245, 247, 241);
+            BackColor = StudioTheme.Chrome;
+            ForeColor = StudioTheme.Ivory;
             Controls.Add(new Label { Text = template, AutoEllipsis = true, Bounds = new Rectangle(20, 16, 462, 31),
                 Font = new Font("Segoe UI Semibold", 16) });
             title.MaxLength = composer.MaxLength = 80;
@@ -40,6 +40,12 @@ namespace ValeScore
             meter.SelectedIndex = Array.IndexOf(Score.Meters, draft.Beats + "/" + draft.BeatType);
             for (int i = 0; i < 30; i++) key.Items.Add(KeySignature.Name(i % 15 - 7, i >= 15));
             key.SelectedIndex = draft.Fifths + 7 + (draft.MinorKey ? 15 : 0);
+            StyleInput(title);
+            StyleInput(composer);
+            StyleInput(meter);
+            StyleInput(key);
+            StyleInput(bars);
+            StyleInput(tempo);
             AddField("Título", title, 58);
             AddField("Compositor", composer, 99);
             AddField("Fórmula de compasso", meter, 140);
@@ -47,9 +53,9 @@ namespace ValeScore
             AddField("Quantidade de compassos", bars, 222);
             AddField("Andamento (BPM)", tempo, 263);
             var cancel = new StudioButton { Text = "Cancelar", DialogResult = DialogResult.Cancel, ForeColor = ForeColor,
-                BackColor = Color.FromArgb(42, 68, 73), Bounds = new Rectangle(260, 322, 103, 33) };
-            var create = new StudioButton { Text = "Criar partitura", ForeColor = ForeColor,
-                BackColor = Color.FromArgb(226, 187, 125), Bounds = new Rectangle(373, 322, 111, 33) };
+                BackColor = StudioTheme.Raised, Bounds = new Rectangle(260, 322, 103, 33) };
+            var create = new StudioButton { Text = "Criar partitura", ForeColor = StudioTheme.Night,
+                BackColor = StudioTheme.Gold, Bounds = new Rectangle(373, 322, 111, 33) };
             create.Click += delegate
             {
                 var notation = ((string)meter.SelectedItem).Split('/');
@@ -68,6 +74,12 @@ namespace ValeScore
             ActiveControl = title;
         }
 
+        private static void StyleInput(Control input)
+        {
+            input.BackColor = StudioTheme.Night;
+            input.ForeColor = StudioTheme.Ivory;
+        }
+
         private void AddField(string label, Control input, int y)
         {
             Controls.Add(new Label { Text = label, AutoSize = true, Location = new Point(20, y + 4) });
@@ -77,3 +89,4 @@ namespace ValeScore
         }
     }
 }
+

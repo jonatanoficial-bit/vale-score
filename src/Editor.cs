@@ -12,12 +12,12 @@ namespace ValeScore
 {
     public sealed class Editor : Form
     {
-        private static readonly Color Dark = Color.FromArgb(18, 29, 37);
-        private static readonly Color PanelColor = Color.FromArgb(29, 44, 54);
-        private static readonly Color TextColor = Color.FromArgb(243, 247, 244);
-        private static readonly Color Muted = Color.FromArgb(181, 201, 205);
-        private static readonly Color Accent = Color.FromArgb(226, 187, 125);
-        private static readonly Color Mint = Color.FromArgb(155, 218, 201);
+        private static readonly Color Dark = StudioTheme.Night;
+        private static readonly Color PanelColor = StudioTheme.Chrome;
+        private static readonly Color TextColor = StudioTheme.Ivory;
+        private static readonly Color Muted = StudioTheme.Quiet;
+        private static readonly Color Accent = StudioTheme.Gold;
+        private static readonly Color Mint = StudioTheme.Mint;
         private static readonly string[] Figures = { "Semibreve", "Mínima", "Semínima", "Colcheia", "Semicolcheia" };
         private static readonly Keys[] PitchKeys = { Keys.A, Keys.S, Keys.D, Keys.F, Keys.G, Keys.H, Keys.J };
         private enum EditMode { Select, Write, Rest, Erase, Lyrics, Chord }
@@ -196,11 +196,11 @@ namespace ValeScore
             inputMenu.DropDownOpening += delegate { PopulateInputs(); };
             menu.Items.AddRange(new ToolStripItem[] { file, edit, playbackMenu, help });
 
-            var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 58, Padding = new Padding(17, 9, 0, 4), WrapContents = false, BackColor = PanelColor };
+            var header = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 64, Padding = new Padding(18, 12, 0, 6), WrapContents = false, BackColor = PanelColor };
             var homeLink = Button("Vale Score", ShowHome);
             homeLink.Font = new Font("Georgia", 17, FontStyle.Bold);
-            homeLink.MinimumSize = new Size(155, 37);
-            homeLink.Margin = new Padding(5, 0, 9, 0);
+            homeLink.MinimumSize = new Size(165, 39);
+            homeLink.Margin = new Padding(4, 0, 11, 0);
             homeLink.AccessibleName = "Vale Score · Central de projetos";
             figureTips.SetToolTip(homeLink, "Central de projetos (Ctrl+Shift+H)");
             header.Controls.Add(homeLink);
@@ -229,21 +229,21 @@ namespace ValeScore
             header.Controls.Add(exportButton);
 
             var body = new Panel { Dock = DockStyle.Fill };
-            var left = new Panel { Dock = DockStyle.Left, Width = 220, BackColor = PanelColor, Padding = new Padding(14, 8, 12, 0) };
+            var left = new Panel { Dock = DockStyle.Left, Width = 232, BackColor = PanelColor, Padding = new Padding(15, 10, 13, 0) };
             var sidebar = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoScroll = true };
             left.Controls.Add(sidebar);
-            documentTitle.Width = 162;
+            documentTitle.Width = 176;
             documentTitle.Height = 36;
             documentTitle.Font = new Font("Segoe UI Semibold", 13);
             documentTitle.ForeColor = TextColor;
             sidebar.Controls.Add(documentTitle);
-            documentInfo.Width = 162;
+            documentInfo.Width = 176;
             documentInfo.Height = 24;
             documentInfo.ForeColor = Mint;
             documentInfo.Font = new Font("Segoe UI Semibold", 9);
             sidebar.Controls.Add(documentInfo);
             sidebar.Controls.Add(Caption("PAUTAS"));
-            tracks.Width = 162;
+            tracks.Width = 176;
             tracks.Height = 103;
             tracks.BackColor = Dark;
             tracks.ForeColor = TextColor;
@@ -265,7 +265,7 @@ namespace ValeScore
                 RevealCursor();
             };
             sidebar.Controls.Add(tracks);
-            var instrument = new ComboBox { Width = 162, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Novo instrumento" };
+            var instrument = new ComboBox { Width = 176, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Novo instrumento" };
             instrument.Items.AddRange(new object[] { "Piano", "Violão", "Voz" });
             instrument.SelectedIndex = 0;
             sidebar.Controls.Add(instrument);
@@ -277,7 +277,7 @@ namespace ValeScore
             sidebar.Controls.Add(Button("Título e andamento", Properties));
             sidebar.Controls.Add(Button("Fórmula de compasso", EditMeter));
             sidebar.Controls.Add(Caption("SELEÇÃO"));
-            selection.Width = 162;
+            selection.Width = 176;
             selection.Height = 62;
             selection.ForeColor = TextColor;
             sidebar.Controls.Add(selection);
@@ -288,7 +288,7 @@ namespace ValeScore
             sidebar.Controls.Add(Button("Marca de ensaio", EditRehearsalMark));
             sidebar.Controls.Add(eraseNoteButton);
 
-            var modes = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 44, Padding = new Padding(12, 5, 0, 0),
+            var modes = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 48, Padding = new Padding(14, 7, 0, 0),
                 WrapContents = false, BackColor = Dark };
             AddMode(modes, EditMode.Select, "Selecionar", "V");
             AddMode(modes, EditMode.Write, "Notas", "N");
@@ -297,12 +297,12 @@ namespace ValeScore
             AddMode(modes, EditMode.Erase, "Apagar", "E");
             AddMode(modes, EditMode.Lyrics, "Letra", "Shift+L");
             voiceButton = Button("Voz 1", ToggleVoice);
-            voiceButton.MinimumSize = new Size(88, 32);
+            voiceButton.MinimumSize = new Size(94, 33);
             modes.Controls.Add(voiceButton);
 
             tools.Dock = DockStyle.Top;
-            tools.Height = 62;
-            tools.Padding = new Padding(12, 0, 0, 0);
+            tools.Height = 68;
+            tools.Padding = new Padding(14, 2, 0, 0);
             tools.BackColor = PanelColor;
             tools.WrapContents = false;
             AddFigureGroup("FIGURAS", durationButtons, false);
@@ -346,7 +346,7 @@ namespace ValeScore
                 "Cesura", () => ChangePauseMark("caesura"));
             Disposed += delegate { figureTips.Dispose(); exportMenu.Dispose(); timer.Dispose(); recoveryTimer.Dispose(); };
 
-            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 44, BackColor = Dark, Padding = new Padding(10, 3, 0, 0), WrapContents = false };
+            var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 48, BackColor = Dark, Padding = new Padding(12, 5, 0, 0), WrapContents = false };
             previousButton = Button("‹", () => MovePage(-1));
             previousButton.Width = 35;
             nextButton = Button("›", () => MovePage(1));
@@ -374,9 +374,9 @@ namespace ValeScore
             status.Margin = new Padding(12, 2, 0, 0);
             footer.Controls.Add(status);
 
-            var transport = new Panel { Dock = DockStyle.Bottom, Height = 53, BackColor = PanelColor };
+            var transport = new Panel { Dock = DockStyle.Bottom, Height = 56, BackColor = PanelColor };
             var transportControls = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false,
-                Padding = new Padding(9, 3, 0, 0), BackColor = PanelColor };
+                Padding = new Padding(12, 5, 0, 0), BackColor = PanelColor };
             playButton = Button("▶  Tocar", Play);
             playButton.AutoSize = false;
             playButton.Width = 87;
@@ -502,7 +502,7 @@ namespace ValeScore
         }
         private sealed class MenuColors : ProfessionalColorTable
         {
-            public override Color MenuItemSelected { get { return Color.FromArgb(49, 79, 83); } }
+            public override Color MenuItemSelected { get { return StudioTheme.Raised; } }
             public override Color MenuItemSelectedGradientBegin { get { return MenuItemSelected; } }
             public override Color MenuItemSelectedGradientEnd { get { return MenuItemSelected; } }
             public override Color MenuItemPressedGradientBegin { get { return PanelColor; } }
@@ -545,10 +545,11 @@ namespace ValeScore
 
         private FlowLayoutPanel AddPaletteGroup(string title, int count)
         {
-            var group = new Panel { Width = count * 35, Height = 59, Margin = new Padding(0, 0, 13, 0) };
-            group.Controls.Add(new Label { Text = title, Location = new Point(1, 2), AutoSize = true,
+            var group = new StudioGroup { Width = count * 36 + 8, Height = 63, Margin = new Padding(0, 0, 12, 0) };
+            group.Controls.Add(new Label { Text = title, Location = new Point(7, 4), AutoSize = true,
                 ForeColor = Muted, Font = new Font("Segoe UI Semibold", 8) });
-            var row = new FlowLayoutPanel { Location = new Point(0, 17), Width = group.Width, Height = 41, WrapContents = false };
+            var row = new FlowLayoutPanel { Location = new Point(4, 20), Width = group.Width - 8, Height = 41,
+                WrapContents = false, BackColor = PanelColor };
             group.Controls.Add(row);
             tools.Controls.Add(group);
             return row;
@@ -559,8 +560,8 @@ namespace ValeScore
             button.AccessibleName = label;
             button.BackColor = PanelColor;
             button.ForeColor = TextColor;
-            button.FlatAppearance.BorderColor = Color.FromArgb(61, 78, 94);
-            button.FlatAppearance.MouseOverBackColor = Color.FromArgb(48, 65, 80);
+            button.FlatAppearance.BorderColor = StudioTheme.Line;
+            button.FlatAppearance.MouseOverBackColor = StudioTheme.Raised;
             figureTips.SetToolTip(button, label);
             button.Click += delegate { action(); FocusWorkspace(); };
             row.Controls.Add(button);
@@ -1003,7 +1004,7 @@ namespace ValeScore
 
         private Label Caption(string text)
         {
-            return new Label { Text = text, Width = 162, Height = 23, ForeColor = Muted,
+            return new Label { Text = text, Width = 176, Height = 23, ForeColor = Muted,
                 Margin = new Padding(3, 9, 0, 1), Font = new Font("Segoe UI Semibold", 9) };
         }
 
@@ -1011,7 +1012,7 @@ namespace ValeScore
         {
             if (e.Index < 0) return;
             bool selected = (e.State & DrawItemState.Selected) != 0;
-            using (var fill = new SolidBrush(selected ? Color.FromArgb(46, 78, 82) : Dark)) e.Graphics.FillRectangle(fill, e.Bounds);
+            using (var fill = new SolidBrush(selected ? StudioTheme.Raised : Dark)) e.Graphics.FillRectangle(fill, e.Bounds);
             if (selected)
                 using (var bar = new SolidBrush(Mint)) e.Graphics.FillRectangle(bar, e.Bounds.X, e.Bounds.Y + 4, 3, e.Bounds.Height - 8);
             TextRenderer.DrawText(e.Graphics, tracks.Items[e.Index].ToString(), Font,
@@ -1021,7 +1022,7 @@ namespace ValeScore
         }
         private Button Button(string text, Action action = null)
         {
-            var button = new StudioButton { Text = text, Height = 32, AutoSize = true,
+            var button = new StudioButton { Text = text, Height = 34, AutoSize = true,
                 Padding = new Padding(2, 0, 2, 0), BackColor = PanelColor, ForeColor = TextColor,
                 Cursor = Cursors.Hand, Margin = new Padding(3, 2, 3, 3) };
             if (action != null) button.Click += delegate { action(); FocusWorkspace(); };

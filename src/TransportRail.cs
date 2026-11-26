@@ -27,13 +27,16 @@ namespace ValeScore
         protected override void OnPaint(PaintEventArgs e)
         {
             if (Width < 2 || Height < 2) return;
-            using (var track = new SolidBrush(Color.FromArgb(56, 76, 87)))
-            using (var fill = new LinearGradientBrush(ClientRectangle, Color.FromArgb(183, 224, 209),
-                Color.FromArgb(222, 186, 125), LinearGradientMode.Horizontal))
+            using (var track = new SolidBrush(Color.FromArgb(71, StudioTheme.Night)))
+            using (var fill = new LinearGradientBrush(ClientRectangle, StudioTheme.Mint, StudioTheme.Gold, LinearGradientMode.Horizontal))
             {
                 e.Graphics.FillRectangle(track, 0, 2, Width, Height - 4);
                 e.Graphics.FillRectangle(fill, 0, 2, (float)(Width * progress), Height - 4);
+                if (progress > 0)
+                using (var head = new SolidBrush(StudioTheme.Ivory))
+                    e.Graphics.FillEllipse(head, (float)(Width * progress) - 2.5f, 0, 5, Height);
             }
         }
     }
 }
+

@@ -9,13 +9,13 @@ namespace ValeScore
 {
     internal sealed class StartScreen : UserControl
     {
-        private static readonly Color Ground = Color.FromArgb(18, 29, 37);
-        private static readonly Color Card = Color.FromArgb(26, 42, 52);
-        private static readonly Color PanelInk = Color.FromArgb(35, 55, 63);
-        private static readonly Color White = Color.FromArgb(245, 247, 241);
-        private static readonly Color Quiet = Color.FromArgb(178, 201, 204);
-        private static readonly Color Gold = Color.FromArgb(226, 187, 125);
-        private static readonly Color Mint = Color.FromArgb(155, 218, 201);
+        private static readonly Color Ground = StudioTheme.Night;
+        private static readonly Color Card = StudioTheme.Panel;
+        private static readonly Color PanelInk = StudioTheme.Raised;
+        private static readonly Color White = StudioTheme.Ivory;
+        private static readonly Color Quiet = StudioTheme.Quiet;
+        private static readonly Color Gold = StudioTheme.Gold;
+        private static readonly Color Mint = StudioTheme.Mint;
         private readonly ListBox recentList = new ListBox();
         private readonly Label emptyHint;
         private readonly Button resume, openRecent, removeRecent, recovery;
@@ -33,23 +33,25 @@ namespace ValeScore
             AccessibleName = "Central de projetos";
             Disposed += delegate { detailFont.Dispose(); };
 
-            var frame = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(32, 19, 32, 20),
-                ColumnCount = 2, RowCount = 2, BackColor = Ground };
+            var frame = new CinematicFrame { Dock = DockStyle.Fill, Padding = new Padding(36, 22, 36, 24),
+                ColumnCount = 2, RowCount = 2 };
             frame.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 53));
             frame.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 47));
-            frame.RowStyles.Add(new RowStyle(SizeType.Absolute, 109));
+            frame.RowStyles.Add(new RowStyle(SizeType.Absolute, 116));
             frame.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
 
             var header = new Panel { Dock = DockStyle.Fill, BackColor = Ground, Margin = new Padding(0) };
-            var brand = new Label { Text = "Vale Score", AutoSize = true, ForeColor = Gold, Location = new Point(0, 3),
+            var brand = new Label { Text = "VALE SCORE", AutoSize = true, ForeColor = Gold, Location = new Point(0, 1),
                 Font = new Font("Georgia", 16, FontStyle.Bold) };
-            var title = new Label { Text = "Central de projetos", AutoSize = true, ForeColor = White, Location = new Point(0, 41),
+            var protocol = new Label { Text = "NOTATION STUDIO  ·  EDIÇÃO PROFISSIONAL", AutoSize = true, ForeColor = Mint, Location = new Point(2, 29),
+                Font = new Font("Segoe UI Semibold", 8) };
+            var title = new Label { Text = "Central de projetos", AutoSize = true, ForeColor = White, Location = new Point(0, 48),
                 Font = new Font("Segoe UI Semibold", 25) };
             resume = ActionButton("Continuar edição", resumeEdit, false);
             resume.Visible = false;
             resume.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            header.Controls.AddRange(new Control[] { brand, title, resume });
-            header.Resize += delegate { resume.Location = new Point(Math.Max(0, header.Width - resume.Width - 4), 51); };
+            header.Controls.AddRange(new Control[] { brand, protocol, title, resume });
+            header.Resize += delegate { resume.Location = new Point(Math.Max(0, header.Width - resume.Width - 4), 58); };
             frame.Controls.Add(header, 0, 0);
             frame.SetColumnSpan(header, 2);
 
@@ -64,13 +66,13 @@ namespace ValeScore
             left.Controls.Add(actions, 0, 0);
             left.Controls.Add(Heading("Projetos recentes"), 0, 1);
 
-            var stack = new Panel { BackColor = Ground, Dock = DockStyle.Fill, Margin = new Padding(1, 0, 1, 4) };
+            var stack = new Panel { BackColor = Card, Dock = DockStyle.Fill, Margin = new Padding(1, 0, 1, 4) };
             recentList.Dock = DockStyle.Fill;
             recentList.IntegralHeight = false;
             recentList.DrawMode = DrawMode.OwnerDrawFixed;
             recentList.ItemHeight = 56;
             recentList.BorderStyle = BorderStyle.None;
-            recentList.BackColor = Ground;
+            recentList.BackColor = Card;
             recentList.ForeColor = White;
             recentList.AccessibleName = "Projetos recentes";
             recentList.DrawItem += DrawRecent;
@@ -89,7 +91,7 @@ namespace ValeScore
             stack.Controls.Add(emptyHint);
             left.Controls.Add(stack, 0, 2);
 
-            var bottom = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, BackColor = Card };
+            var bottom = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = true, BackColor = Card, Padding = new Padding(0, 4, 0, 0) };
             openRecent = ActionButton("Abrir selecionado", OpenSelected, false);
             removeRecent = ActionButton("Remover da lista", () =>
             {
@@ -138,8 +140,8 @@ namespace ValeScore
 
         private static TableLayoutPanel Section(Padding margin)
         {
-            var section = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, BackColor = Card,
-                Padding = new Padding(16, 13, 16, 12), Margin = margin };
+            var section = new StudioSection { Dock = DockStyle.Fill, ColumnCount = 1, BackColor = Card,
+                Padding = new Padding(18, 15, 18, 14), Margin = margin };
             section.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
             return section;
         }
@@ -158,7 +160,7 @@ namespace ValeScore
         private static StudioButton ActionButton(string text, Action action, bool primary)
         {
             var button = new StudioButton { Text = text, AutoSize = true, MinimumSize = new Size(90, 31),
-                Padding = new Padding(5, 0, 5, 0), BackColor = primary ? Gold : PanelInk, ForeColor = White,
+                Padding = new Padding(8, 0, 8, 0), BackColor = primary ? Gold : PanelInk, ForeColor = White,
                 Margin = new Padding(0, 2, 8, 3), Cursor = Cursors.Hand };
             button.Click += delegate { action(); };
             return button;
@@ -182,7 +184,7 @@ namespace ValeScore
             if (e.Index < 0) return;
             string path = (string)recentList.Items[e.Index];
             bool selected = (e.State & DrawItemState.Selected) != 0;
-            using (var fill = new SolidBrush(selected ? PanelInk : Ground)) e.Graphics.FillRectangle(fill, e.Bounds);
+            using (var fill = new SolidBrush(selected ? PanelInk : Card)) e.Graphics.FillRectangle(fill, e.Bounds);
             if (selected)
                 using (var rail = new SolidBrush(Mint)) e.Graphics.FillRectangle(rail, e.Bounds.X, e.Bounds.Y + 6, 3, e.Bounds.Height - 12);
             var flags = TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
@@ -231,6 +233,7 @@ namespace ValeScore
                 var flags = TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix;
                 int textWidth = Width - 173;
                 int y = Height / 2 - 22;
+                using (var accent = new SolidBrush(Gold)) e.Graphics.FillRectangle(accent, 132, y - 5, 28, 2);
                 TextRenderer.DrawText(e.Graphics, example.Title, titleFont, new Rectangle(136, y, textWidth, 23), White, flags);
                 TextRenderer.DrawText(e.Graphics, example.Detail, detailFont, new Rectangle(136, y + 28, textWidth, 19), Quiet, flags);
                 TextRenderer.DrawText(e.Graphics, "›", titleFont, new Rectangle(Width - 30, y + 6, 20, 25), Gold, flags);
@@ -238,3 +241,4 @@ namespace ValeScore
         }
     }
 }
+

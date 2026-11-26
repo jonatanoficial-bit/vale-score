@@ -30,11 +30,11 @@ namespace ValeScore
 
     internal sealed class QuickPicker : Form
     {
-        private static readonly Color Frame = Color.FromArgb(25, 38, 47);
-        private static readonly Color ListBase = Color.FromArgb(17, 29, 36);
-        private static readonly Color SelectedBase = Color.FromArgb(42, 74, 79);
-        private static readonly Color MainText = Color.FromArgb(242, 247, 246);
-        private static readonly Color Hint = Color.FromArgb(179, 199, 202);
+        private static readonly Color Frame = StudioTheme.Chrome;
+        private static readonly Color ListBase = StudioTheme.Night;
+        private static readonly Color SelectedBase = StudioTheme.Raised;
+        private static readonly Color MainText = StudioTheme.Ivory;
+        private static readonly Color Hint = StudioTheme.Quiet;
         private readonly QuickChoice[] choices;
         private readonly ListBox results = new ListBox();
         private readonly TextBox search = new TextBox();
@@ -82,7 +82,7 @@ namespace ValeScore
             var cancel = new StudioButton { Text = "Cancelar", DialogResult = DialogResult.Cancel,
                 Bounds = new Rectangle(321, 369, 103, 33), BackColor = SelectedBase, ForeColor = MainText };
             run = new StudioButton { Text = action, Bounds = new Rectangle(434, 369, 111, 33),
-                BackColor = Color.FromArgb(226, 187, 125), ForeColor = ListBase };
+                BackColor = StudioTheme.Gold, ForeColor = StudioTheme.Night };
             run.Click += delegate { Choose(); };
             Controls.AddRange(new Control[] { caption, search, results, message, cancel, run });
             CancelButton = cancel;
@@ -143,3 +143,4 @@ namespace ValeScore
         }
     }
 }
+
