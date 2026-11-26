@@ -16,6 +16,8 @@ namespace ValeScore
         [DataMember] public int Length;
         [DataMember] public int Step;
         [DataMember] public int Alter;
+        [DataMember(EmitDefaultValue = false)] public int TabString;
+        [DataMember(EmitDefaultValue = false)] public int TabFret;
         [DataMember(EmitDefaultValue = false)] public bool Courtesy;
         [DataMember(EmitDefaultValue = false)] public string Lyric;
         [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
@@ -81,7 +83,7 @@ namespace ValeScore
             PruneNoteLinks();
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 15;
+        public const int CurrentVersion = 16;
         public const int VoicesPerStaff = 2;
         public const int MaxChordNotes = 8;
         public const int MaxExpressionTextLength = 48;
@@ -192,6 +194,42 @@ namespace ValeScore
             PutEvent(part, staff, new Note { Tick = tick, Length = length, Step = step, Alter = alter, Voice = voice });
         }
 
+        public Note PutTab(int part, int staff, int tick, int length, int stringNumber, int fret, int voice = 0)
+        {
+            if (part < 0 || part >= Parts.Count || staff != 0 || !GuitarTab.IsGuitar(Parts[part]))
+                throw new InvalidOperationException("A tablatura está disponível na pauta de Violão.");
+            int midi, step, alter;
+            if (!GuitarTab.TryPitch(stringNumber, fret, out midi) || !GuitarTab.TrySpell(this, midi, out step, out alter))
+                throw new InvalidOperationException("Essa casa não cabe na extensão de tablatura suportada.");
+            var lane = Parts[part].Staves[staff];
+            var onset = lane.Where(note => note.Tick == tick && note.Voice == voice).ToArray();
+            var sameString = onset.FirstOrDefault(note => note.TabString == stringNumber);
+            if (sameString != null)
+            {
+                EditNote(part, staff, sameString, length, step, alter);
+                sameString.TabString = stringNumber;
+                sameString.TabFret = fret;
+                return sameString;
+            }
+            var samePitch = onset.FirstOrDefault(note => !note.IsRest && note.Midi == midi);
+            if (samePitch != null)
+            {
+                samePitch.TabString = stringNumber;
+                samePitch.TabFret = fret;
+                return samePitch;
+            }
+            if (onset.Length == 0 || onset.All(note => note.IsRest))
+            {
+                PutEvent(part, staff, new Note { Tick = tick, Length = length, Step = step, Alter = alter, Voice = voice,
+                    TabString = stringNumber, TabFret = fret });
+                return lane.Find(note => note.Tick == tick && note.Voice == voice);
+            }
+            var added = AddChordNote(part, staff, tick, length, step, alter, voice);
+            added.TabString = stringNumber;
+            added.TabFret = fret;
+            return added;
+        }
+
         public void PutRest(int part, int staff, int tick, int length, int voice = 0)
         {
             PutEvent(part, staff, new Note { Tick = tick, Length = length, IsRest = true, Voice = voice });
@@ -227,8 +265,10 @@ namespace ValeScore
                 cluster.Any(n => n != note && (n.Step == step || n.Midi == pitch.Midi)) ||
                 lane.Any(n => n.Voice == note.Voice && n.Tick > note.Tick && n.Tick < note.Tick + length))
                 throw new InvalidOperationException("A alteração gera uma altura duplicada ou uma sobreposição rítmica.");
+            int previousMidi = note.Midi;
             note.Step = step;
             note.Alter = alter;
+            if (note.Midi != previousMidi) { note.TabString = 0; note.TabFret = 0; }
             foreach (var member in cluster) member.Length = length;
             PruneStaffLinks(lane);
         }
@@ -259,6 +299,11 @@ namespace ValeScore
                     note.Courtesy = previous.Courtesy;
                     note.TiedTo = previous.TiedTo;
                     note.SlursTo = previous.SlursTo;
+                    if (note.TabString == 0 && note.Midi == previous.Midi)
+                    {
+                        note.TabString = previous.TabString;
+                        note.TabFret = previous.TabFret;
+                    }
                 }
                 notes.RemoveAll(n => n.Tick == tick && n.Voice == note.Voice);
             }
@@ -409,7 +454,7 @@ namespace ValeScore
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 || n.Voice < 0 || n.Voice >= VoicesPerStaff ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
-            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.Lyric == null && !n.HyphenAfter &&
+            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.TabString == 0 && n.TabFret == 0 && n.Lyric == null && !n.HyphenAfter &&
                 n.Chord == null && n.Dynamic == null && n.Articulation == null && n.ExpressionText == null && n.PauseMark == null &&
                 !n.Courtesy && !n.TiedTo.HasValue && n.SlursTo == null;
             ChordSymbol symbol;
@@ -418,7 +463,8 @@ namespace ValeScore
                 (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation)) ||
                 !ValidDisplayText(n.ExpressionText, MaxExpressionTextLength) ||
                 (n.PauseMark != null && !PauseMarks.Names.Contains(n.PauseMark))) return false;
-            return n.Step >= 0 && n.Step <= 69 && n.Alter >= -2 && n.Alter <= 2 && n.Midi >= 0 && n.Midi <= 127;
+            return (n.TabString == 0 ? n.TabFret == 0 : GuitarTab.ValidPosition(n.TabString, n.TabFret)) &&
+                n.Step >= 0 && n.Step <= 69 && n.Alter >= -2 && n.Alter <= 2 && n.Midi >= 0 && n.Midi <= 127;
         }
 
         public static int RestLength(int tick, int remaining)
@@ -526,6 +572,8 @@ namespace ValeScore
                 change.Item1.Step = change.Item2;
                 change.Item1.Alter = change.Item3;
                 change.Item1.Chord = change.Item4;
+                change.Item1.TabString = 0;
+                change.Item1.TabFret = 0;
             }
             PruneNoteLinks();
             return changes.Count;
@@ -557,7 +605,7 @@ namespace ValeScore
             var source = notes.ToArray();
             var copies = source.ToDictionary(n => n.Id, n => new Note
             {
-                Tick = n.Tick + delta, Length = n.Length, Step = n.Step, Alter = n.Alter, Voice = n.Voice,
+                Tick = n.Tick + delta, Length = n.Length, Step = n.Step, Alter = n.Alter, TabString = n.TabString, TabFret = n.TabFret, Voice = n.Voice,
                 IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
                 Dynamic = n.Dynamic, Articulation = n.Articulation, ExpressionText = n.ExpressionText, PauseMark = n.PauseMark,
                 Courtesy = n.Courtesy, TiedTo = n.TiedTo, SlursTo = n.SlursTo
@@ -739,6 +787,8 @@ namespace ValeScore
                             throw new InvalidDataException("Nota ou ritmo inválido no projeto.");
                         lastTick = n.Tick;
                     }
+                    if (p.Instrument != "Violão" && lane.Any(n => n.TabString != 0))
+                        throw new InvalidDataException("Tablatura só é válida para Violão.");
                     if (lane.Any(n => n.TiedTo.HasValue))
                     {
                         var notes = lane.ToDictionary(n => n.Id);
@@ -774,7 +824,8 @@ namespace ValeScore
                             if (onset.Count() > 1 && (onset.Count() > MaxChordNotes ||
                                 onset.Any(n => n.Length != first.Length || n.IsRest) ||
                                 onset.Select(n => n.Step).Distinct().Count() != onset.Count() ||
-                                onset.Select(n => n.Midi).Distinct().Count() != onset.Count()))
+                                onset.Select(n => n.Midi).Distinct().Count() != onset.Count() ||
+                                onset.Where(n => n.TabString != 0).Select(n => n.TabString).Distinct().Count() != onset.Count(n => n.TabString != 0)))
                                 throw new InvalidDataException("Acorde inválido no projeto.");
                         }
                     }

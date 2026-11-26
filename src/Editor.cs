@@ -20,7 +20,7 @@ namespace ValeScore
         private static readonly Color Mint = StudioTheme.Mint;
         private static readonly string[] Figures = { "Semibreve", "Mínima", "Semínima", "Colcheia", "Semicolcheia" };
         private static readonly Keys[] PitchKeys = { Keys.A, Keys.S, Keys.D, Keys.F, Keys.G, Keys.H, Keys.J };
-        private enum EditMode { Select, Write, Rest, Erase, Lyrics, Chord }
+        private enum EditMode { Select, Write, Rest, Erase, Lyrics, Chord, Tab }
         private readonly ScorePage sheet = new ScorePage();
         private readonly Panel surface = new ScoreDesk { AutoScroll = true, Dock = DockStyle.Fill };
         private readonly FlowLayoutPanel tools = new FlowLayoutPanel();
@@ -44,6 +44,8 @@ namespace ValeScore
         private readonly Dictionary<EditMode, Button> modeButtons = new Dictionary<EditMode, Button>();
         private readonly ToolTip figureTips = new ToolTip();
         private readonly ComboBox zoom = new ComboBox();
+        private readonly ComboBox tabStringPicker = new ComboBox();
+        private readonly NumericUpDown tabFretPicker = new NumericUpDown();
         private readonly LyricEntry lyricEntry = new LyricEntry();
         private readonly Stack<byte[]> undo = new Stack<byte[]>(), redo = new Stack<byte[]>();
         private readonly Timer timer = new Timer { Interval = 33 };
@@ -177,6 +179,7 @@ namespace ValeScore
                 "Na pauta, use ← / → para navegar e ↑ / ↓ para mudar a altura.\n" +
                 "No modo Notas, A S D F G H J inserem Dó a Si. Enter insere a altura do cursor.\n" +
                 "K abre Acordes. Shift+V alterna a voz da pauta. Alt+↓ percorre as notas do acorde na seleção.\n" +
+                "Em uma pauta de Violão, T abre Tab: escolha corda e casa, clique na tablatura ou pressione Enter. 0–9 muda a casa.\n" +
                 "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
                 "Shift+T liga à próxima nota de mesma altura e voz. Repita para remover.\n" +
                 "Shift+S marca o início da frase. Clique na última nota ou selecione-a pelo teclado e pressione Shift+S.\n" +
@@ -302,12 +305,33 @@ namespace ValeScore
             AddMode(modes, EditMode.Select, "Selecionar", "V");
             AddMode(modes, EditMode.Write, "Notas", "N");
             AddMode(modes, EditMode.Chord, "Acordes", "K");
+            AddMode(modes, EditMode.Tab, "Tab", "T");
             AddMode(modes, EditMode.Rest, "Pausas", "R");
             AddMode(modes, EditMode.Erase, "Apagar", "E");
             AddMode(modes, EditMode.Lyrics, "Letra", "Shift+L");
             voiceButton = Button("Voz 1", ToggleVoice);
             voiceButton.MinimumSize = new Size(94, 33);
             modes.Controls.Add(voiceButton);
+            tabStringPicker.Width = 94;
+            tabStringPicker.DropDownStyle = ComboBoxStyle.DropDownList;
+            tabStringPicker.BackColor = Dark;
+            tabStringPicker.ForeColor = TextColor;
+            tabStringPicker.AccessibleName = "Corda da tablatura";
+            for (int stringNumber = 1; stringNumber <= GuitarTab.Strings; stringNumber++)
+                tabStringPicker.Items.Add(GuitarTab.StringLabel(stringNumber));
+            tabStringPicker.SelectedIndex = 0;
+            tabStringPicker.Margin = new Padding(7, 3, 0, 0);
+            tabStringPicker.Visible = false;
+            tabFretPicker.Width = 54;
+            tabFretPicker.Minimum = 0;
+            tabFretPicker.Maximum = GuitarTab.MaxFret;
+            tabFretPicker.BackColor = Dark;
+            tabFretPicker.ForeColor = TextColor;
+            tabFretPicker.AccessibleName = "Casa da tablatura";
+            tabFretPicker.Margin = new Padding(4, 3, 0, 0);
+            tabFretPicker.Visible = false;
+            modes.Controls.Add(tabStringPicker);
+            modes.Controls.Add(tabFretPicker);
 
             tools.Dock = DockStyle.Top;
             tools.Height = 68;
@@ -609,6 +633,11 @@ namespace ValeScore
         private void SetMode(EditMode value)
         {
             if (!CommitLyric()) return;
+            if (value == EditMode.Tab && !IsGuitarTarget())
+            {
+                Report("Selecione uma pauta de Violão para escrever tablatura.");
+                return;
+            }
             CancelSlur();
             mode = value;
             foreach (var item in modeButtons)
@@ -625,9 +654,11 @@ namespace ValeScore
                 "Escolha uma pausa e clique na posição desejada. Enter insere no cursor.",
                 "Clique na nota ou pausa que deseja apagar. Ctrl+Z desfaz.",
                 "Clique numa nota para escrever a letra. Espaço avança por palavra e hífen por sílaba.",
-                "Clique em alturas diferentes na mesma posição. As notas do acorde compartilham a duração. → avança."
+                "Clique em alturas diferentes na mesma posição. As notas do acorde compartilham a duração. → avança.",
+                "Escolha corda e casa. Clique na tablatura ou na pauta para escrever; 0–9 muda a casa e Enter insere."
             };
             modeHint.Text = hints[(int)value];
+            tabStringPicker.Visible = tabFretPicker.Visible = value == EditMode.Tab;
             ShowDuration();
         }
 
@@ -652,6 +683,7 @@ namespace ValeScore
                 pick.Voice = position.Voice;
             }
             position = pick;
+            if (mode == EditMode.Tab && pick.TabString > 0) tabStringPicker.SelectedIndex = pick.TabString - 1;
             var note = SelectedNote();
             if (button == MouseButtons.Right || mode == EditMode.Select)
             {
@@ -668,6 +700,10 @@ namespace ValeScore
             else if (mode == EditMode.Rest)
             {
                 PutRest(duration);
+            }
+            else if (mode == EditMode.Tab)
+            {
+                if (PutTab()) AdvanceInput();
             }
             else if (mode == EditMode.Erase)
             {
@@ -1077,6 +1113,10 @@ namespace ValeScore
                 Output.MusicXml(model.ExtractPart(position.Part), output), score.Parts[position.Part].Name);
         }
         private void FocusWorkspace() { if (!editingLyric) ActiveControl = null; }
+        private bool IsGuitarTarget()
+        {
+            return position.Part >= 0 && position.Part < score.Parts.Count && GuitarTab.IsGuitar(score.Parts[position.Part]);
+        }
 
         private void ToggleFocusMode()
         {
@@ -1177,6 +1217,10 @@ namespace ValeScore
             position.Part = Math.Min(position.Part, score.Parts.Count - 1);
             position.Staff = Math.Min(position.Staff, score.Parts[position.Part].Staves.Count - 1);
             position.Tick = Math.Min(position.Tick, score.Bars * score.BarTicks - 1);
+            bool guitarTarget = IsGuitarTarget();
+            if (mode == EditMode.Tab && !guitarTarget) SetMode(EditMode.Select);
+            modeButtons[EditMode.Tab].Enabled = guitarTarget;
+            tabStringPicker.Visible = tabFretPicker.Visible = mode == EditMode.Tab && guitarTarget;
             sheet.Selection = position;
             syncingTracks = true;
             tracks.BeginUpdate();
@@ -1209,6 +1253,9 @@ namespace ValeScore
                 + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, Score.BaseDuration(selected.Length))]
                     + new string('·', Score.DotCount(selected.Length)))
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
+            int tabString, tabFret;
+            if (note != null && GuitarTab.TryPosition(note, out tabString, out tabFret))
+                selection.Text += "\nTAB · " + GuitarTab.StringLabel(tabString) + " · casa " + tabFret;
             bool dirty = Dirty();
             if (!atHome) Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
             documentTitle.Text = score.Title;
@@ -1316,7 +1363,7 @@ namespace ValeScore
                 else Put(selected.Step, value, selected.Alter);
                 return;
             }
-            var tool = rest ? EditMode.Rest : mode == EditMode.Chord ? EditMode.Chord : EditMode.Write;
+            var tool = rest ? EditMode.Rest : mode == EditMode.Chord ? EditMode.Chord : mode == EditMode.Tab ? EditMode.Tab : EditMode.Write;
             if (mode != tool) SetMode(tool);
             SetDuration(value);
         }
@@ -1374,6 +1421,22 @@ namespace ValeScore
         private bool PutRest(int length)
         {
             return Change(() => score.PutRest(position.Part, position.Staff, position.Tick, length, position.Voice));
+        }
+
+        private bool PutTab()
+        {
+            if (!IsGuitarTarget()) { Report("Selecione uma pauta de Violão para escrever tablatura."); return false; }
+            Note written = null;
+            int stringNumber = tabStringPicker.SelectedIndex + 1;
+            int fret = (int)tabFretPicker.Value;
+            bool changed = Change(() =>
+            {
+                written = score.PutTab(position.Part, position.Staff, position.Tick, duration, stringNumber, fret, position.Voice);
+                position.Step = written.Step;
+                position.NoteId = written.Id;
+            });
+            if (changed) Report("Tablatura · " + GuitarTab.StringLabel(stringNumber) + " · casa " + fret);
+            return changed;
         }
 
         private void AdvanceInput()
@@ -1614,8 +1677,16 @@ namespace ValeScore
             if (key == Keys.N) { SetMode(EditMode.Write); return true; }
             if (key == (Keys.Shift | Keys.V)) { ToggleVoice(); return true; }
             if (key == Keys.K) { SetMode(EditMode.Chord); return true; }
+            if (key == Keys.T) { SetMode(EditMode.Tab); return true; }
             if (key == Keys.R) { SetMode(EditMode.Rest); return true; }
             if (key == Keys.E) { SetMode(EditMode.Erase); return true; }
+            if (mode == EditMode.Tab && ((key >= Keys.D0 && key <= Keys.D9) || (key >= Keys.NumPad0 && key <= Keys.NumPad9)))
+            {
+                int fret = key >= Keys.NumPad0 ? key - Keys.NumPad0 : key - Keys.D0;
+                tabFretPicker.Value = fret;
+                Report("Tablatura · casa " + fret + ". Enter ou clique para inserir.");
+                return true;
+            }
             if (key >= Keys.D1 && key <= Keys.D5)
             {
                 var selected = SelectedEvent();
@@ -1666,6 +1737,11 @@ namespace ValeScore
             if (key == Keys.Enter && mode == EditMode.Rest)
             {
                 if (PutRest(duration)) AdvanceInput();
+                return true;
+            }
+            if (key == Keys.Enter && mode == EditMode.Tab)
+            {
+                if (PutTab()) AdvanceInput();
                 return true;
             }
             if (mode != EditMode.Write && mode != EditMode.Chord) return base.ProcessCmdKey(ref msg, key);

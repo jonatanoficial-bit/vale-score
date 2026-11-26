@@ -308,7 +308,8 @@ namespace ValeScore
                                     xml.WriteElementString("duration", score.BarTicks.ToString());
                                     xml.WriteEndElement();
                                 }
-                                WriteVoice(xml, score, lane, measureNotes, marks, tiedFrom, slurStarts, slurEnds, staff, part.Staves.Count > 1, voice, start, end);
+                                WriteVoice(xml, score, lane, measureNotes, marks, tiedFrom, slurStarts, slurEnds, staff, part.Staves.Count > 1,
+                                    part.Instrument == "Violão", voice, start, end);
                             }
                         }
                         xml.WriteEndElement();
@@ -321,7 +322,7 @@ namespace ValeScore
 
         private static void WriteVoice(XmlWriter xml, Score score, List<Note> lane, Note[] measureNotes,
             HashSet<Guid> marks, HashSet<Guid> tiedFrom, ILookup<Guid, NoteSlur> slurStarts,
-            ILookup<Guid, NoteSlur> slurEnds, int staff, bool piano, int voice, int start, int end)
+            ILookup<Guid, NoteSlur> slurEnds, int staff, bool piano, bool guitar, int voice, int start, int end)
         {
             string stem = measureNotes.Select(n => n.Voice).Distinct().Count() > 1 ? (voice == 0 ? "up" : "down") : null;
             int cursor = start;
@@ -342,7 +343,7 @@ namespace ValeScore
                 while (cursor < note.Tick)
                 {
                     int rest = Score.RestLength(cursor - start, note.Tick - cursor, score.BeatTicks);
-                    WriteNote(xml, null, rest, staff, piano, voice: voice);
+                    WriteNote(xml, null, rest, staff, piano, voice: voice, guitar: guitar);
                     cursor += rest;
                 }
                 string beam = groupEnd - groupStart < 2 ? null : i == groupStart ? "begin" : i == groupEnd - 1 ? "end" : "continue";
@@ -360,7 +361,7 @@ namespace ValeScore
                     WriteNote(xml, member, member.Length, staff, piano,
                         previous != null && previous.HyphenAfter, extra ? null : beam,
                         showAccidental: marks.Contains(member.Id), chordMember: extra, voice: voice, stem: stem, tieStop: tiedFrom.Contains(member.Id),
-                        slurStarts: slurStarts[member.Id], slurEnds: slurEnds[member.Id]);
+                        slurStarts: slurStarts[member.Id], slurEnds: slurEnds[member.Id], guitar: guitar);
                 }
                 if (!note.IsRest) previous = members.FirstOrDefault(n => n.Lyric != null) ?? note;
                 cursor += note.Length;
@@ -369,7 +370,7 @@ namespace ValeScore
             {
                 bool entireBar = cursor == start;
                 int rest = entireBar ? score.BarTicks : Score.RestLength(cursor - start, end - cursor, score.BeatTicks);
-                WriteNote(xml, null, rest, staff, piano, fullMeasure: entireBar, voice: voice);
+                WriteNote(xml, null, rest, staff, piano, fullMeasure: entireBar, voice: voice, guitar: guitar);
                 cursor += rest;
             }
         }
@@ -431,7 +432,7 @@ namespace ValeScore
 
         private static void WriteNote(XmlWriter xml, Note note, int length, int staff, bool piano,
             bool fromPrevious = false, string beam = null, bool fullMeasure = false, bool showAccidental = false, bool chordMember = false, int voice = 0, string stem = null, bool tieStop = false,
-            IEnumerable<NoteSlur> slurStarts = null, IEnumerable<NoteSlur> slurEnds = null)
+            IEnumerable<NoteSlur> slurStarts = null, IEnumerable<NoteSlur> slurEnds = null, bool guitar = false)
         {
             xml.WriteStartElement("note");
             if (chordMember) xml.WriteElementString("chord", "");
@@ -484,8 +485,10 @@ namespace ValeScore
             bool fermata = note != null && note.PauseMark == "fermata";
             bool breath = note != null && note.PauseMark == "breath-mark";
             bool caesura = note != null && note.PauseMark == "caesura";
+            int tabString = 0, tabFret = 0;
+            bool tab = note != null && !note.IsRest && guitar && GuitarTab.TryPosition(note, out tabString, out tabFret);
             if (tieStart || tieStop || (note != null && (note.Articulation != null || fermata || breath || caesura)) ||
-                (slurStarts != null && slurStarts.Any()) || (slurEnds != null && slurEnds.Any()))
+                (slurStarts != null && slurStarts.Any()) || (slurEnds != null && slurEnds.Any()) || tab)
             {
                 xml.WriteStartElement("notations");
                 if (tieStop) WriteTie(xml, "tied", "stop");
@@ -499,6 +502,13 @@ namespace ValeScore
                     if (note.Articulation != null) xml.WriteElementString(note.Articulation, "");
                     if (breath) xml.WriteElementString("breath-mark", "");
                     if (caesura) xml.WriteElementString("caesura", "");
+                    xml.WriteEndElement();
+                }
+                if (tab)
+                {
+                    xml.WriteStartElement("technical");
+                    xml.WriteElementString("string", tabString.ToString());
+                    xml.WriteElementString("fret", tabFret.ToString());
                     xml.WriteEndElement();
                 }
                 xml.WriteEndElement();

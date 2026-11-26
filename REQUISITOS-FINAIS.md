@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.24.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio e sinais de pausa. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.25.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio, sinais de pausa e tablatura de violão. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -129,7 +129,7 @@ Base da matriz: prévia 0.24.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 07.01 | Piano com duas ou mais pautas | Parcial | |
 | 07.02 | Cruzamento de notas e barras entre pautas | Pendente | |
 | 07.03 | Pedais e indicações de dedilhado para teclado | Pendente | |
-| 07.04 | Violão, guitarra e baixo com tablatura | Pendente | |
+| 07.04 | Violão, guitarra e baixo com tablatura | Parcial | Violão padrão de seis cordas: entrada por corda/casa, acordes, pauta+TAB, reprodução, projeto e MusicXML. Guitarra, baixo, afinações e técnicas seguem pendentes. |
 | 07.05 | Afinações alternativas, capotraste e diagramas de acordes | Pendente | |
 | 07.06 | Harmônicos, bends, slides e técnicas de cordas | Pendente | |
 | 07.07 | Divisi de cordas orquestrais | Pendente | |
@@ -264,7 +264,7 @@ Base da matriz: prévia 0.24.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 14.09 | Sincronização com vídeo, timecode e hit points | Pendente | |
 | 14.10 | Exportação de vídeo de partitura em alguns produtos | Pendente | |
 | 14.11 | Bibliotecas de modelos e plugins da comunidade | Pendente | |
-| 14.12 | Recursos para tablatura e notação alternativa | Pendente | |
+| 14.12 | Recursos para tablatura e notação alternativa | Parcial | Tablatura de violão editável, renderizada e intercambiável em MusicXML. Demais notações alternativas seguem pendentes. |
 | 14.13 | Suporte a múltiplos sistemas operacionais | Pendente | |
 
 ## 15 · Exigências recomendadas para o Vale Score

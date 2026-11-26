@@ -199,6 +199,48 @@ internal static class Smoke
         }
     }
 
+    private static void TablatureChecks(string directory)
+    {
+        var score = new Score { Title = "Estudo para violão", Author = "Teste" };
+        score.AddPart("Violão");
+        var open = score.PutTab(0, 0, 0, 4, 1, 0);
+        var low = score.PutTab(0, 0, 4, 4, 6, 3);
+        var chordTop = score.PutTab(0, 0, 8, 4, 1, 3);
+        var chordBottom = score.PutTab(0, 0, 8, 4, 2, 3);
+        score.Validate();
+        Assert(open.Midi == 64 && low.Midi == 43 && chordTop.TabString == 1 && chordBottom.TabString == 2,
+            "Tablatura converte corda e casa em alturas tocáveis e aceita acordes");
+        var restored = Score.Restore(score.Snapshot());
+        Assert(restored.Parts[0].Staves[0].Select(note => note.TabString).SequenceEqual(new[] { 1, 6, 1, 2 }),
+            "Projeto preserva corda e casa da tablatura");
+        restored.PasteBar(1, restored.CopyBar(0));
+        Assert(restored.Parts[0].Staves[0].Where(note => note.Tick >= 16 && note.Tick < 32).Select(note => note.TabFret)
+            .SequenceEqual(new[] { 0, 3, 3, 3 }), "Cópia de compasso conserva as casas da tablatura");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(score, xml);
+            xml.Position = 0;
+            var document = XDocument.Load(xml);
+            Assert(document.Descendants("technical").Elements("string").Select(item => item.Value).SequenceEqual(new[] { "1", "6", "1", "2" }) &&
+                document.Descendants("technical").Elements("fret").Select(item => item.Value).SequenceEqual(new[] { "0", "3", "3", "3" }),
+                "MusicXML exporta cordas e casas estruturadas");
+            xml.Position = 0;
+            var imported = MusicXmlImport.Read(xml, "Tablatura").Project.Parts[0].Staves[0];
+            var importedNotes = imported.Where(note => !note.IsRest).ToArray();
+            Assert(importedNotes.Select(note => note.TabString).SequenceEqual(new[] { 1, 6, 1, 2 }) && importedNotes[1].Midi == 43,
+                "MusicXML reimporta tablatura e notas graves de violão");
+        }
+        using (var image = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var graphics = Graphics.FromImage(image))
+        {
+            graphics.Clear(Color.White);
+            ScorePage.Draw(graphics, score, 0, null, -1);
+            Assert(Enumerable.Range(260, 220).Any(x => image.GetPixel(x, ScoreLayout.FirstStaffTop + 55).R < 150),
+                "Página desenha as seis linhas da tablatura");
+            image.Save(Path.Combine(directory, "tablatura.png"));
+        }
+    }
+
     private static void VoiceChecks(string directory)
     {
         var legacy = Score.New(false);
@@ -447,6 +489,7 @@ internal static class Smoke
         }
         SlurChecks(directory);
         TieChecks(directory);
+        TablatureChecks(directory);
         ExpressionMarkChecks(directory);
         VoiceChecks(directory);
         ChordChecks(directory);

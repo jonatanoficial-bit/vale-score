@@ -141,7 +141,8 @@ namespace ValeScore
                 var metadata = names[(string)source.Attribute("id") ?? ""].FirstOrDefault();
                 string namePart = metadata == null ? null : (string)metadata.Element("part-name");
                 string instrument = staves == 2 ? "Piano" :
-                    (namePart ?? "").IndexOf("violão", StringComparison.OrdinalIgnoreCase) >= 0 ? "Violão" : "Voz";
+                    ((namePart ?? "").IndexOf("violão", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    (namePart ?? "").IndexOf("guitar", StringComparison.OrdinalIgnoreCase) >= 0) ? "Violão" : "Voz";
                 score.AddPart(instrument);
                 int part = score.Parts.Count - 1;
                 score.Parts[part].Name = Label(namePart, score.Parts[part].Name, 40);
@@ -290,8 +291,9 @@ namespace ValeScore
                         int octave = pitch == null ? -1 : Integer(pitch.Element("octave"), -1);
                         int alteration = pitch == null ? 0 : Integer(pitch.Element("alter"), int.MaxValue, 0);
                         int step = octave * 7 + degree;
-                        int min = staff == 0 ? 25 : 13;
-                        if (degree < 0 || octave < 0 || octave > 9 || step < min || step > min + 18 ||
+                        int min = result.Project.Parts[part].Instrument == "Violão" ? 0 : staff == 0 ? 25 : 13;
+                        int max = result.Project.Parts[part].Instrument == "Violão" ? 69 : min + 18;
+                        if (degree < 0 || octave < 0 || octave > 9 || step < min || step > max ||
                             alteration < -2 || alteration > 2) { result.Omitted++; continue; }
                         Note added;
                         var lane = result.Project.Parts[part].Staves[staff];
@@ -308,6 +310,15 @@ namespace ValeScore
                             added = chordBase = lane.Find(n => n.Tick == at && n.Voice == voiceIndex);
                             baseStaff = staff;
                             baseVoice = voice;
+                        }
+                        var technical = child.Elements("notations").Elements("technical").FirstOrDefault();
+                        int tabString = technical == null ? -1 : Integer(technical.Element("string"), -1);
+                        int tabFret = technical == null ? -1 : Integer(technical.Element("fret"), -1);
+                        int tabPitch;
+                        if (result.Project.Parts[part].Instrument == "Violão" && GuitarTab.TryPitch(tabString, tabFret, out tabPitch) && tabPitch == added.Midi)
+                        {
+                            added.TabString = tabString;
+                            added.TabFret = tabFret;
                         }
                         var accidental = child.Element("accidental");
                         if (accidental != null && ((string)accidental.Attribute("cautionary") == "yes" ||

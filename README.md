@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.24.0 · Prévia para Windows x64**
+**0.25.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.24.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.24.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.25.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.25.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -17,12 +17,13 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Organizar o ensaio.** Use **Marca de ensaio** para criar um identificador no compasso atual. Ele acompanha inserção, cópia, duplicação e remoção de compassos.
 - **Navegar.** Use o zoom e as setas de página na barra inferior. **F11** abre o modo foco para leitura, revisão e apresentação; **Esc** retorna ao estúdio. **F1** abre a lista de atalhos.
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
+- **Escrever tablatura.** Selecione uma pauta de **Violão** e escolha **Tab** (**T**). Defina a corda e a casa, clique na linha da tablatura ou pressione **Enter**. As teclas **0–9** trocam rapidamente a casa; acordes são formados escrevendo outras cordas na mesma posição. A altura correspondente é criada na pauta e toca normalmente.
 - **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
 - **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. No modo **Notas**, cada tecla insere uma nota e avança. No modo **Acordes**, as teclas acumularão notas na posição atual até você avançar.
 - **Exportar.** O botão **Exportar** oferece MIDI tipo 1 com uma pista por instrumento, MusicXML com letras, WAV e impressão. Para PDF, escolha **Microsoft Print to PDF** quando disponível no Windows.
 - **Salvar.** O formato `.valescore` armazena a partitura localmente. Ctrl+S salva. Ctrl+Z e Ctrl+Y navegam pelo histórico de edição.
 
-A prévia suporta até 64 compassos, duas vozes rítmicas com acordes e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
+A prévia suporta até 64 compassos, duas vozes rítmicas com acordes e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. Para violão, há tablatura padrão de seis cordas, casas 0–24 e acordes por corda. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
 
 Use **Importar MIDI** ou **Ctrl+I** para criar um projeto editável. A conversão usa semicolcheias, fórmula inicial compatível e andamento inicial, e distribui as notas em até quatro pianos com até duas vozes por pauta. O aplicativo informa ajustes e omissões. O MIDI original fica disponível em **Reprodução → Tocar ou parar MIDI aberto**. O som interno de arquivos MIDI usa um timbre simples, lê andamento e pedal e tem limite de 10 minutos. A saída MIDI do Windows permite usar os timbres do dispositivo selecionado.
 
@@ -35,6 +36,14 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.25
+
+- **Tablatura de violão integrada.** A pauta de Violão agora mostra seis linhas de TAB, com números de casa posicionados diretamente sobre a corda correta e ligados à notação tradicional.
+- **Entrada direta e rápida.** O modo **Tab** (**T**) mostra seletores visuais de corda e casa. Clique na linha desejada ou use **Enter**; **0–9** escolhe a casa sem interromper a escrita. Escrever mais de uma corda na mesma posição forma um acorde.
+- **Partitura que permanece tocável.** Cada posição de tablatura gera a altura real da afinação padrão de violão, por isso reprodução, MIDI e WAV continuam coerentes com o que está na TAB.
+- **Intercâmbio preservado.** O projeto nativo mantém corda e casa, e MusicXML troca os elementos técnicos estruturados `string` e `fret`. A importação reconhece tablatura compatível e as notas graves do violão.
+- A suíte automatizada cobre mapeamento de cordas/casas, acordes, persistência, cópia de compasso, renderização das seis linhas e ida-e-volta em MusicXML.
 
 ## Novidades da 0.24
 
@@ -168,5 +177,5 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `8`. A versão 0.11 abre projetos dos esquemas 1 a 7 e grava no esquema 8. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração e letra opcional. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+JSON UTF-8, versão de esquema `16`. Projetos dos esquemas 1 a 15 abrem automaticamente na versão atual. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração, letra opcional e, no violão, corda e casa de tablatura. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
 
