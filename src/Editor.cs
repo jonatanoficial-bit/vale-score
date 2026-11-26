@@ -52,7 +52,11 @@ namespace ValeScore
         private readonly RecentProjects recentProjects;
         private readonly StartScreen home;
         private readonly Control[] workspace;
-        private bool atHome, hasDocument;
+        private Control[] focusChrome;
+        private Button focusButton;
+        private FormBorderStyle borderBeforeFocus;
+        private FormWindowState stateBeforeFocus;
+        private bool atHome, hasDocument, focusMode;
         private byte[] recoverySnapshot;
         private Score copiedBar;
         private readonly Stopwatch clock = new Stopwatch();
@@ -179,7 +183,8 @@ namespace ValeScore
                 "Ctrl+H abre expressões, texto técnico e sinais de pausa. A paleta Sinais também inclui fermata, respiração e cesura.\n" +
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
-                "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz.", "Atalhos do Vale Score"));
+                "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz. F11 ativa o modo foco.", "Atalhos do Vale Score"));
+            Item(help, "Modo foco e leitura", Keys.F11, ToggleFocusMode);
             var playbackMenu = new ToolStripMenuItem("Reprodução");
             Item(playbackMenu, "Mixer de instrumentos…", Keys.Control | Keys.M, EditMixer);
             Item(playbackMenu, "Tocar ou parar partitura", Keys.None, Play);
@@ -212,6 +217,10 @@ namespace ValeScore
             header.Controls.Add(undoButton);
             header.Controls.Add(redoButton);
             header.Controls.Add(Button("Buscar comandos  ·  Ctrl+K", FindCommand));
+            focusButton = Button("Foco  ·  F11", ToggleFocusMode);
+            focusButton.AccessibleName = "Ativar modo foco e leitura";
+            figureTips.SetToolTip(focusButton, "Modo foco e leitura (F11)");
+            header.Controls.Add(focusButton);
             var exportButton = Button("↓  Exportar");
             exportButton.BackColor = Accent;
             exportMenu.BackColor = PanelColor;
@@ -448,6 +457,7 @@ namespace ValeScore
             Controls.Add(menu);
             MainMenuStrip = menu;
             workspace = Controls.Cast<Control>().ToArray();
+            focusChrome = new Control[] { menu, header, left, tools, modes, modeHint, footer };
             home = new StartScreen(NewFromTemplate, Open, ImportMidiScore, Recover, ShowWorkspace, OpenExample)
                 { OpenRecent = OpenRecentProject, RemoveRecent = RemoveRecentProject };
             Controls.Add(home);
@@ -1067,6 +1077,41 @@ namespace ValeScore
                 Output.MusicXml(model.ExtractPart(position.Part), output), score.Parts[position.Part].Name);
         }
         private void FocusWorkspace() { if (!editingLyric) ActiveControl = null; }
+
+        private void ToggleFocusMode()
+        {
+            if (atHome) return;
+            SetFocusMode(!focusMode);
+        }
+
+        private void SetFocusMode(bool active)
+        {
+            if (focusMode == active) return;
+            focusMode = active;
+            if (active)
+            {
+                borderBeforeFocus = FormBorderStyle;
+                stateBeforeFocus = WindowState;
+                foreach (var control in focusChrome) control.Hide();
+                FormBorderStyle = FormBorderStyle.None;
+                WindowState = FormWindowState.Maximized;
+                focusButton.Text = "Sair do foco  ·  F11";
+                Report("Modo foco · F11 ou Esc para retornar ao estúdio.");
+            }
+            else
+            {
+                WindowState = FormWindowState.Normal;
+                FormBorderStyle = borderBeforeFocus;
+                WindowState = stateBeforeFocus;
+                foreach (var control in focusChrome) control.Show();
+                focusButton.Text = "Foco  ·  F11";
+                Report("Estúdio completo restaurado.");
+            }
+            PerformLayout();
+            UpdateZoom();
+            RevealCursor();
+            FocusWorkspace();
+        }
         private bool Dirty() { return saved == null || !score.Snapshot().SequenceEqual(saved); }
         private void Report(string message) { status.Text = message; }
         private void Error(Exception ex) { Report(ex.Message); SystemSounds.Exclamation.Play(); }
@@ -1557,6 +1602,8 @@ namespace ValeScore
                 if (key == Keys.Escape && hasDocument) { ShowWorkspace(); return true; }
                 return base.ProcessCmdKey(ref msg, key);
             }
+            if (key == Keys.F11) { ToggleFocusMode(); return true; }
+            if (key == Keys.Escape && focusMode) { SetFocusMode(false); return true; }
             if (editingLyric) return HandleLyricKey(key) || base.ProcessCmdKey(ref msg, key);
             if (key == (Keys.Shift | Keys.S)) { SetSlurEndpoint(); return true; }
             if (key == (Keys.Shift | Keys.T)) { ToggleTie(); return true; }
@@ -1667,6 +1714,7 @@ namespace ValeScore
         private void ShowHome()
         {
             if (!CommitLyric()) return;
+            if (focusMode) SetFocusMode(false);
             if (hasDocument) Stop();
             if (slurAnchor != null) SetMode(EditMode.Select);
             atHome = true;

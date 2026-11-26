@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.23.0 · Prévia para Windows x64**
+**0.24.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.23.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.23.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.24.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.24.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -15,7 +15,7 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Colocar letra.** Selecione uma nota e pressione **Shift+L**. Digite sob a pauta. **Espaço** encerra a palavra e **hífen** separa sílabas. Ambos avançam para a próxima nota na mesma pauta. **Enter** confirma, **Esc** cancela o texto atual e **Shift+Tab** volta à nota anterior.
 - **Marcar a interpretação.** Selecione uma nota e use **Expressão da nota** ou **Ctrl+H** para inserir texto como “dolce” ou “pizz.”, além de cifra, dinâmica e articulação. A área **Sinais** traz fermata, respiração e cesura como desenhos musicais; a fermata prolonga a nota no áudio/MIDI.
 - **Organizar o ensaio.** Use **Marca de ensaio** para criar um identificador no compasso atual. Ele acompanha inserção, cópia, duplicação e remoção de compassos.
-- **Navegar.** Use o zoom e as setas de página na barra inferior. **F1** abre a lista de atalhos.
+- **Navegar.** Use o zoom e as setas de página na barra inferior. **F11** abre o modo foco para leitura, revisão e apresentação; **Esc** retorna ao estúdio. **F1** abre a lista de atalhos.
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
 - **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
 - **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. No modo **Notas**, cada tecla insere uma nota e avança. No modo **Acordes**, as teclas acumularão notas na posição atual até você avançar.
@@ -35,6 +35,12 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.24
+
+- **Modo foco.** **F11** coloca a partitura em tela cheia sem os painéis de edição, preservando o transporte para ensaio. **Esc** ou **F11** volta ao estúdio completo.
+- **Ritmo visual de página.** O último sistema não é mais alargado até a margem: recebe uma largura proporcional e respiro editorial, enquanto sistemas completos continuam justificados.
+- A suíte agora valida a alternância de foco e retorno por teclado, além dos testes existentes de desenho e espaçamento.
 
 ## Novidades da 0.23
 

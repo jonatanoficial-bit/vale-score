@@ -1071,6 +1071,11 @@ internal static class Smoke
             var lyricKey = entry.GetType().GetMethod("ProcessCmdKey", flags);
             Action<Keys> key = value => edit.Invoke(editor, new object[] { new Message(), value });
             Action<Keys> letterKey = value => lyricKey.Invoke(entry, new object[] { new Message(), value });
+            var focus = type.GetField("focusMode", flags);
+            key(Keys.F11);
+            Assert((bool)focus.GetValue(editor), "F11 abre o modo foco de leitura");
+            key(Keys.Escape);
+            Assert(!(bool)focus.GetValue(editor), "Esc restaura o estúdio após o modo foco");
             Func<Note> first = () => ((Score)model.GetValue(editor)).Parts[0].Staves[0].FirstOrDefault();
             var mouseDown = typeof(ScorePage).GetMethod("OnMouseDown", flags);
             Action<Point> click = point => mouseDown.Invoke(sheet, new object[] { new MouseEventArgs(MouseButtons.Left, 1, point.X, point.Y, 0) });

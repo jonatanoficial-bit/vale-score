@@ -212,7 +212,8 @@ namespace ValeScore
         private void AddSystem(List<Measure> measures, float used, bool last)
         {
             float capacity = staffRight - MeasureLeft;
-            float target = last && measures.Count == 1 ? Math.Min(capacity, Math.Max(228, used)) : capacity;
+            float breathingRoom = Math.Min(88, Math.Max(34, used * .18f));
+            float target = last ? Math.Min(capacity, Math.Max(228, used + breathingRoom)) : capacity;
             float left = MeasureLeft;
             foreach (var measure in measures)
             {
@@ -226,3 +227,4 @@ namespace ValeScore
         }
     }
 }
+

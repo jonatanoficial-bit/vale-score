@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.23.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio e sinais de pausa. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.24.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio e sinais de pausa. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -160,9 +160,9 @@ Base da matriz: prévia 0.23.0. A [suíte automatizada](tests/Smoke.cs) verifica
 
 | ID | Requisito | Estado | Evidência de aceite |
 | --- | --- | --- | --- |
-| 09.01 | Layout automático de qualidade editorial | Parcial | |
+| 09.01 | Layout automático de qualidade editorial | Parcial | Sistemas completos justificados; último sistema proporcional com respiro editorial. Ainda sem quebras e ajustes manuais. |
 | 09.02 | Prevenção de colisões entre símbolos | Parcial | |
-| 09.03 | Espaçamento horizontal e vertical inteligente | Parcial | |
+| 09.03 | Espaçamento horizontal e vertical inteligente | Parcial | Reserva espaço para letras, cifras, dinâmicas, acidentes, pontos e acordes; o último sistema evita alongamento artificial. [Testes](tests/Smoke.cs). |
 | 09.04 | Controle manual de espaçamento rítmico | Pendente | |
 | 09.05 | Ajuste gráfico fino de objetos individuais | Pendente | |
 | 09.06 | Quebras de sistema e de página | Pendente | |
@@ -179,7 +179,7 @@ Base da matriz: prévia 0.23.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 09.17 | Controle de cabeçalhos de movimentos | Pendente | |
 | 09.18 | Fontes musicais compatíveis com SMuFL | Pendente | |
 | 09.19 | Regras globais de gravação e substituições locais | Pendente | |
-| 09.20 | Visualização contínua, paginada e preenchimento da janela | Parcial | |
+| 09.20 | Visualização contínua, paginada e preenchimento da janela | Parcial | Páginas, zoom por largura e modo foco em tela cheia; rolagem contínua e layouts alternativos pendentes. [Testes](tests/Smoke.cs). |
 
 ## 10 · Revisão, correção e produtividade
 
