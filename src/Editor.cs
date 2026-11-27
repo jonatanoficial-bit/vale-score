@@ -27,7 +27,7 @@ namespace ValeScore
         private readonly ListBox tracks = new ListBox();
         private readonly Label pageLabel = new Label(), status = new Label(), selection = new Label(), modeHint = new Label();
         private readonly Button undoButton, redoButton, playButton, previousButton, nextButton;
-        private readonly Button editLyricButton, eraseNoteButton;
+        private readonly Button editLyricButton, eraseNoteButton, tabSetupButton;
         private readonly Label documentTitle = new Label(), documentInfo = new Label();
         private readonly Label playbackLabel = new Label();
         private readonly TransportRail transportRail = new TransportRail();
@@ -179,7 +179,7 @@ namespace ValeScore
                 "Na pauta, use ← / → para navegar e ↑ / ↓ para mudar a altura.\n" +
                 "No modo Notas, A S D F G H J inserem Dó a Si. Enter insere a altura do cursor.\n" +
                 "K abre Acordes. Shift+V alterna a voz da pauta. Alt+↓ percorre as notas do acorde na seleção.\n" +
-                "Em uma pauta de Violão, T abre Tab: escolha corda e casa, clique na tablatura ou pressione Enter. 0–9 muda a casa.\n" +
+                "Em violão, guitarra ou baixo, T abre Tab: escolha corda e casa, clique na tablatura ou pressione Enter. 0–9 muda a casa.\n" +
                 "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
                 "Shift+T liga à próxima nota de mesma altura e voz. Repita para remover.\n" +
                 "Shift+S marca o início da frase. Clique na última nota ou selecione-a pelo teclado e pressione Shift+S.\n" +
@@ -278,7 +278,7 @@ namespace ValeScore
             };
             sidebar.Controls.Add(tracks);
             var instrument = new ComboBox { Width = 176, DropDownStyle = ComboBoxStyle.DropDownList, AccessibleName = "Novo instrumento" };
-            instrument.Items.AddRange(new object[] { "Piano", "Violão", "Voz" });
+            instrument.Items.AddRange(new object[] { "Piano", "Violão", "Guitarra", "Baixo", "Voz" });
             instrument.SelectedIndex = 0;
             sidebar.Controls.Add(instrument);
             sidebar.Controls.Add(Button("Adicionar instrumento", () =>
@@ -288,6 +288,9 @@ namespace ValeScore
             sidebar.Controls.Add(Button("+ Compasso", AddBar));
             sidebar.Controls.Add(Button("Título e andamento", Properties));
             sidebar.Controls.Add(Button("Fórmula de compasso", EditMeter));
+            tabSetupButton = Button("Configurar tablatura", ConfigureTablature);
+            tabSetupButton.AccessibleName = "Configurar afinação e capo da tablatura";
+            sidebar.Controls.Add(tabSetupButton);
             sidebar.Controls.Add(Caption("SELEÇÃO"));
             selection.Width = 176;
             selection.Height = 62;
@@ -635,7 +638,7 @@ namespace ValeScore
             if (!CommitLyric()) return;
             if (value == EditMode.Tab && !IsGuitarTarget())
             {
-                Report("Selecione uma pauta de Violão para escrever tablatura.");
+                Report("Selecione uma pauta de violão, guitarra ou baixo para escrever tablatura.");
                 return;
             }
             CancelSlur();
@@ -655,7 +658,7 @@ namespace ValeScore
                 "Clique na nota ou pausa que deseja apagar. Ctrl+Z desfaz.",
                 "Clique numa nota para escrever a letra. Espaço avança por palavra e hífen por sílaba.",
                 "Clique em alturas diferentes na mesma posição. As notas do acorde compartilham a duração. → avança.",
-                "Escolha corda e casa. Clique na tablatura ou na pauta para escrever; 0–9 muda a casa e Enter insere."
+                "Escolha corda e casa. Clique na tablatura ou na pauta para escrever; 0–9 muda a casa e Enter insere. Configure a afinação e o capo na lateral."
             };
             modeHint.Text = hints[(int)value];
             tabStringPicker.Visible = tabFretPicker.Visible = value == EditMode.Tab;
@@ -1115,7 +1118,55 @@ namespace ValeScore
         private void FocusWorkspace() { if (!editingLyric) ActiveControl = null; }
         private bool IsGuitarTarget()
         {
-            return position.Part >= 0 && position.Part < score.Parts.Count && GuitarTab.IsGuitar(score.Parts[position.Part]);
+            return position.Part >= 0 && position.Part < score.Parts.Count && GuitarTab.IsTabInstrument(score.Parts[position.Part]);
+        }
+
+        private void ConfigureTablature()
+        {
+            if (!CommitLyric()) return;
+            if (!IsGuitarTarget()) { Report("Selecione um instrumento de cordas com tablatura."); return; }
+            int partIndex = position.Part;
+            var part = score.Parts[partIndex];
+            var choices = new List<QuickChoice>();
+            foreach (var tuning in GuitarTab.Options(part))
+            {
+                string title = "Afinação · " + tuning.Label;
+                string detail = tuning.Detail + (part.TabTuning == tuning.Code ? " · ativa" : "");
+                choices.Add(new QuickChoice(title, detail, () => ApplyTabSetup(partIndex, tuning.Code, part.Capo)));
+            }
+            for (int capo = 0; capo <= 12; capo++)
+            {
+                int chosenCapo = capo;
+                string title = chosenCapo == 0 ? "Capo · sem capo" : "Capo · " + chosenCapo + "ª casa";
+                string detail = GuitarTab.SetupDetail(part) + (part.Capo == chosenCapo ? " · ativo" : "");
+                choices.Add(new QuickChoice(title, detail, () => ApplyTabSetup(partIndex, part.TabTuning, chosenCapo)));
+            }
+            using (var dialog = new QuickPicker("Configurar tablatura", "Escolha a afinação ou o capo", choices, "Aplicar"))
+                if (dialog.ShowDialog(this) == DialogResult.OK) dialog.Choice.Run();
+        }
+
+        private void ApplyTabSetup(int partIndex, string tuning, int capo)
+        {
+            if (Change(() => score.ConfigureTablature(partIndex, tuning, capo)))
+                Report("Tablatura · " + score.Parts[partIndex].Instrument + " · " + GuitarTab.SetupLabel(score.Parts[partIndex]));
+        }
+
+        private void RefreshTabStrings()
+        {
+            if (!IsGuitarTarget()) return;
+            var part = score.Parts[position.Part];
+            int strings = GuitarTab.StringCount(part);
+            bool same = tabStringPicker.Items.Count == strings;
+            for (int index = 0; same && index < strings; index++)
+                same = (string)tabStringPicker.Items[index] == GuitarTab.StringLabel(part, index + 1);
+            if (same) return;
+            int wanted = Math.Max(0, Math.Min(strings - 1, tabStringPicker.SelectedIndex));
+            tabStringPicker.BeginUpdate();
+            tabStringPicker.Items.Clear();
+            for (int stringNumber = 1; stringNumber <= strings; stringNumber++)
+                tabStringPicker.Items.Add(GuitarTab.StringLabel(part, stringNumber));
+            tabStringPicker.EndUpdate();
+            tabStringPicker.SelectedIndex = wanted;
         }
 
         private void ToggleFocusMode()
@@ -1220,6 +1271,9 @@ namespace ValeScore
             bool guitarTarget = IsGuitarTarget();
             if (mode == EditMode.Tab && !guitarTarget) SetMode(EditMode.Select);
             modeButtons[EditMode.Tab].Enabled = guitarTarget;
+            tabSetupButton.Visible = guitarTarget;
+            tabSetupButton.Enabled = guitarTarget;
+            if (guitarTarget) RefreshTabStrings();
             tabStringPicker.Visible = tabFretPicker.Visible = mode == EditMode.Tab && guitarTarget;
             sheet.Selection = position;
             syncingTracks = true;
@@ -1232,7 +1286,7 @@ namespace ValeScore
                 for (int j = 0; j < score.Parts[i].Staves.Count; j++)
                 {
                     tracks.Items.Add(score.Parts[i].Name + (score.Parts[i].Staves.Count == 2 ? (j == 0 ? " · sol" : " · fá") : ""));
-                    lanes.Add(new StaffPosition { Part = i, Staff = j, Step = j == 0 ? 28 : 21 });
+                    lanes.Add(new StaffPosition { Part = i, Staff = j, Step = score.Parts[i].Instrument == "Baixo" ? 18 : j == 0 ? 28 : 21 });
                 }
             }
             tracks.SelectedIndex = lanes.FindIndex(l => l.Part == position.Part && l.Staff == position.Staff);
@@ -1254,8 +1308,9 @@ namespace ValeScore
                     + new string('·', Score.DotCount(selected.Length)))
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
             int tabString, tabFret;
-            if (note != null && GuitarTab.TryPosition(note, out tabString, out tabFret))
-                selection.Text += "\nTAB · " + GuitarTab.StringLabel(tabString) + " · casa " + tabFret;
+            if (note != null && GuitarTab.TryPosition(score.Parts[position.Part], note, out tabString, out tabFret))
+                selection.Text += "\nTAB · " + GuitarTab.StringLabel(score.Parts[position.Part], tabString) + " · casa " + tabFret +
+                    "\n" + GuitarTab.SetupLabel(score.Parts[position.Part]);
             bool dirty = Dirty();
             if (!atHome) Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
             documentTitle.Text = score.Title;
@@ -1425,7 +1480,7 @@ namespace ValeScore
 
         private bool PutTab()
         {
-            if (!IsGuitarTarget()) { Report("Selecione uma pauta de Violão para escrever tablatura."); return false; }
+            if (!IsGuitarTarget()) { Report("Selecione uma pauta de violão, guitarra ou baixo para escrever tablatura."); return false; }
             Note written = null;
             int stringNumber = tabStringPicker.SelectedIndex + 1;
             int fret = (int)tabFretPicker.Value;
@@ -1435,7 +1490,7 @@ namespace ValeScore
                 position.Step = written.Step;
                 position.NoteId = written.Id;
             });
-            if (changed) Report("Tablatura · " + GuitarTab.StringLabel(stringNumber) + " · casa " + fret);
+            if (changed) Report("Tablatura · " + GuitarTab.StringLabel(score.Parts[position.Part], stringNumber) + " · casa " + fret);
             return changed;
         }
 

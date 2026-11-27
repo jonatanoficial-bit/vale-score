@@ -239,6 +239,49 @@ internal static class Smoke
                 "Página desenha as seis linhas da tablatura");
             image.Save(Path.Combine(directory, "tablatura.png"));
         }
+
+        var guitar = new Score { Title = "Guitarra Drop D", Author = "Teste" };
+        guitar.AddPart("Guitarra");
+        guitar.ConfigureTablature(0, "drop-d", 2);
+        var guitarLow = guitar.PutTab(0, 0, 0, 4, 6, 0);
+        guitar.Validate();
+        Assert(guitarLow.Midi == 40 && guitar.Parts[0].Capo == 2 && guitar.Parts[0].TabTuning == "drop-d",
+            "Guitarra usa Drop D e capo para calcular a altura soante");
+        var restoredGuitar = Score.Restore(guitar.Snapshot());
+        Assert(restoredGuitar.Parts[0].Instrument == "Guitarra" && restoredGuitar.Parts[0].TabTuning == "drop-d" &&
+            restoredGuitar.Parts[0].Capo == 2 && restoredGuitar.Parts[0].Staves[0][0].Midi == 40,
+            "Projeto preserva instrumento, afinação e capo da guitarra");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(guitar, xml);
+            xml.Position = 0;
+            var document = XDocument.Load(xml);
+            Assert(document.Descendants("staff-details").Elements("staff-lines").Single().Value == "6" &&
+                document.Descendants("staff-details").Elements("capo").Single().Value == "2" &&
+                document.Descendants("staff-tuning").Count() == 6,
+                "MusicXML descreve linhas, afinação e capo da guitarra");
+            xml.Position = 0;
+            var importedGuitar = MusicXmlImport.Read(xml, "Guitarra").Project;
+            Assert(importedGuitar.Parts[0].Instrument == "Guitarra" && importedGuitar.Parts[0].TabTuning == "drop-d" &&
+                importedGuitar.Parts[0].Capo == 2 && importedGuitar.Parts[0].Staves[0][0].Midi == 40,
+                "MusicXML reimporta guitarra, Drop D e capo");
+        }
+
+        var bass = new Score { Title = "Baixo Si", Author = "Teste" };
+        bass.AddPart("Baixo");
+        bass.ConfigureTablature(0, "low-b", 0);
+        var lowB = bass.PutTab(0, 0, 0, 4, 5, 0);
+        bass.Validate();
+        Assert(bass.Parts[0].TabTuning == "low-b" && lowB.TabString == 5 && lowB.Midi == 23,
+            "Baixo de cinco cordas escreve o Si grave na quinta corda");
+        using (var image = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var graphics = Graphics.FromImage(image))
+        {
+            graphics.Clear(Color.White);
+            ScorePage.Draw(graphics, bass, 0, null, -1);
+            Assert(Enumerable.Range(260, 220).Any(x => image.GetPixel(x, ScoreLayout.FirstStaffTop + 87).R < 150),
+                "Página adapta a quantidade de linhas ao baixo de cinco cordas");
+        }
     }
 
     private static void VoiceChecks(string directory)
@@ -495,8 +538,8 @@ internal static class Smoke
         ChordChecks(directory);
         var score = Score.New(true);
         score.Validate();
-        Assert(ScoreTemplate.Library.Length == 6 && ScoreTemplate.Library.All(template => template.Create().Parts.Count >= 1),
-            "Seis modelos geram projetos válidos");
+        Assert(ScoreTemplate.Library.Length == 8 && ScoreTemplate.Library.All(template => template.Create().Parts.Count >= 1),
+            "Oito modelos geram projetos válidos");
         var ensemble = ScoreTemplate.Library.Last().Create();
         Assert(ensemble.Parts.Select(part => part.Staves.Count).SequenceEqual(new[] { 2, 2, 2, 1 }),
             "Modelo para três pianos e violão abre sete pautas");

@@ -140,12 +140,14 @@ namespace ValeScore
                 if (staves < 1 || staves > 2) throw new InvalidDataException("A prévia aceita até duas pautas por parte.");
                 var metadata = names[(string)source.Attribute("id") ?? ""].FirstOrDefault();
                 string namePart = metadata == null ? null : (string)metadata.Element("part-name");
+                var staffDetails = source.Descendants("staff-details").FirstOrDefault();
+                int strings = staffDetails == null ? 0 : Integer(staffDetails.Element("staff-lines"), 0, 0);
                 string instrument = staves == 2 ? "Piano" :
-                    ((namePart ?? "").IndexOf("violão", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    (namePart ?? "").IndexOf("guitar", StringComparison.OrdinalIgnoreCase) >= 0) ? "Violão" : "Voz";
+                    GuitarTab.InstrumentFromMusicXml(namePart, strings);
                 score.AddPart(instrument);
                 int part = score.Parts.Count - 1;
                 score.Parts[part].Name = Label(namePart, score.Parts[part].Name, 40);
+                ReadTabSetup(staffDetails, score.Parts[part], result);
                 ReadPart(source, result, part, staves);
             }
             if (result.Notes == 0 && score.Parts.All(p => p.Staves.All(s => s.Count == 0)))
@@ -157,6 +159,34 @@ namespace ValeScore
                 "Pode haver perdas acima de duas vozes por pauta, em acordes com durações diferentes, timbres, mudanças de andamento, expressões e layout. " +
                 "As pautas são exibidas em clave de sol ou no par sol/fá.";
             return result;
+        }
+
+        private static void ReadTabSetup(XElement details, Part part, MusicXmlImport result)
+        {
+            if (!GuitarTab.IsTabInstrument(part) || details == null) return;
+            int capo = Integer(details.Element("capo"), -1, 0);
+            if (capo < 0 || capo > 12 || !GuitarTab.TrySetTuning(part, part.TabTuning, capo))
+            {
+                result.Normalized++;
+                return;
+            }
+            var pitches = new SortedDictionary<int, int>();
+            foreach (var item in details.Elements("staff-tuning"))
+            {
+                int line;
+                int degree = Array.IndexOf(Score.Steps, (string)item.Element("tuning-step"));
+                int octave = Integer(item.Element("tuning-octave"), -1);
+                int alter = Integer(item.Element("tuning-alter"), 9, 0);
+                if (!int.TryParse((string)item.Attribute("line"), NumberStyles.Integer, CultureInfo.InvariantCulture, out line) ||
+                    line < 1 || degree < 0 || octave < 0 || octave > 9 || alter < -2 || alter > 2 || pitches.ContainsKey(line))
+                {
+                    result.Normalized++;
+                    return;
+                }
+                pitches.Add(line, (octave + 1) * 12 + Score.Semitones[degree] + alter);
+            }
+            if (pitches.Count > 0 && !GuitarTab.TryApplyImportedSetup(part, pitches.OrderBy(item => item.Key).Select(item => item.Value).ToArray(), capo))
+                result.Normalized++;
         }
 
         private static void ReadPart(XElement source, MusicXmlImport result, int part, int staves)
@@ -291,8 +321,8 @@ namespace ValeScore
                         int octave = pitch == null ? -1 : Integer(pitch.Element("octave"), -1);
                         int alteration = pitch == null ? 0 : Integer(pitch.Element("alter"), int.MaxValue, 0);
                         int step = octave * 7 + degree;
-                        int min = result.Project.Parts[part].Instrument == "Violão" ? 0 : staff == 0 ? 25 : 13;
-                        int max = result.Project.Parts[part].Instrument == "Violão" ? 69 : min + 18;
+                        int min = GuitarTab.IsTabInstrument(result.Project.Parts[part]) ? 0 : staff == 0 ? 25 : 13;
+                        int max = GuitarTab.IsTabInstrument(result.Project.Parts[part]) ? 69 : min + 18;
                         if (degree < 0 || octave < 0 || octave > 9 || step < min || step > max ||
                             alteration < -2 || alteration > 2) { result.Omitted++; continue; }
                         Note added;
@@ -315,7 +345,7 @@ namespace ValeScore
                         int tabString = technical == null ? -1 : Integer(technical.Element("string"), -1);
                         int tabFret = technical == null ? -1 : Integer(technical.Element("fret"), -1);
                         int tabPitch;
-                        if (result.Project.Parts[part].Instrument == "Violão" && GuitarTab.TryPitch(tabString, tabFret, out tabPitch) && tabPitch == added.Midi)
+                        if (GuitarTab.IsTabInstrument(result.Project.Parts[part]) && GuitarTab.TryPitch(result.Project.Parts[part], tabString, tabFret, out tabPitch) && tabPitch == added.Midi)
                         {
                             added.TabString = tabString;
                             added.TabFret = tabFret;

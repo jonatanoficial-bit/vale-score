@@ -9,6 +9,8 @@ namespace ValeScore
             new ScoreTemplate("Voz e piano", "Voz e piano com pauta dupla", "Voz", "Piano"),
             new ScoreTemplate("Melodia e cifras", "Pauta única para melodia, letra e cifras", "Voz"),
             new ScoreTemplate("Violão solo", "Pauta em clave de sol", "Violão"),
+            new ScoreTemplate("Guitarra elétrica", "Pauta e TAB com afinação configurável", "Guitarra"),
+            new ScoreTemplate("Baixo elétrico", "Pauta em clave de fá e TAB", "Baixo"),
             new ScoreTemplate("Voz e violão", "Duas partes para voz e violão", "Voz", "Violão"),
             new ScoreTemplate("Três pianos e violão", "Sete pautas em quatro partes", "Piano", "Piano", "Piano", "Violão")
         };
@@ -31,3 +33,4 @@ namespace ValeScore
         }
     }
 }
+

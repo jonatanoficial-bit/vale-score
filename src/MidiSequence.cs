@@ -245,7 +245,7 @@ namespace ValeScore
                     var data = new List<EventData> {
                         new EventData { Order = -3, Data = new byte[] { 0xFF, 3, (byte)name.Length }.Concat(name).ToArray() },
                         new EventData { Order = -2, Data = new byte[] { (byte)(0xC0 | channel),
-                            (byte)(part.Instrument == "Violão" ? 24 : part.Instrument == "Voz" ? 52 : 0) } }
+                            (byte)(part.Instrument == "Violão" ? 24 : part.Instrument == "Guitarra" ? 27 : part.Instrument == "Baixo" ? 33 : part.Instrument == "Voz" ? 52 : 0) } }
                     };
 
                     data.Add(new EventData { Order = -1, Data = new byte[] { (byte)(0xB0 | channel), 10,
@@ -331,3 +331,4 @@ namespace ValeScore
         }
     }
 }
+

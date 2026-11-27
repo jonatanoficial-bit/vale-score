@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.25.0 · Prévia para Windows x64**
+**0.26.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.25.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.25.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.26.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.26.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -16,14 +16,15 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Marcar a interpretação.** Selecione uma nota e use **Expressão da nota** ou **Ctrl+H** para inserir texto como “dolce” ou “pizz.”, além de cifra, dinâmica e articulação. A área **Sinais** traz fermata, respiração e cesura como desenhos musicais; a fermata prolonga a nota no áudio/MIDI.
 - **Organizar o ensaio.** Use **Marca de ensaio** para criar um identificador no compasso atual. Ele acompanha inserção, cópia, duplicação e remoção de compassos.
 - **Navegar.** Use o zoom e as setas de página na barra inferior. **F11** abre o modo foco para leitura, revisão e apresentação; **Esc** retorna ao estúdio. **F1** abre a lista de atalhos.
-- **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá. Violão e voz usam uma pauta em clave de sol.
-- **Escrever tablatura.** Selecione uma pauta de **Violão** e escolha **Tab** (**T**). Defina a corda e a casa, clique na linha da tablatura ou pressione **Enter**. As teclas **0–9** trocam rapidamente a casa; acordes são formados escrevendo outras cordas na mesma posição. A altura correspondente é criada na pauta e toca normalmente.
+- **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá; violão e guitarra usam clave de sol; baixo usa clave de fá. Há modelos diretos de guitarra elétrica e baixo elétrico.
+- **Escrever tablatura.** Selecione uma pauta de **Violão**, **Guitarra** ou **Baixo** e escolha **Tab** (**T**). Defina a corda e a casa, clique na linha da tablatura ou pressione **Enter**. As teclas **0–9** trocam rapidamente a casa; acordes são formados escrevendo outras cordas na mesma posição. A altura correspondente é criada na pauta e toca normalmente.
+- **Configurar cordas.** Em um instrumento com TAB, use **Configurar tablatura** na lateral para escolher a afinação e o capo. Violão traz padrão e Drop D; guitarra inclui padrão, Drop D, Ré padrão e aberta em Sol; baixo inclui padrão, Drop D e Si grave de cinco cordas.
 - **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
 - **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. No modo **Notas**, cada tecla insere uma nota e avança. No modo **Acordes**, as teclas acumularão notas na posição atual até você avançar.
 - **Exportar.** O botão **Exportar** oferece MIDI tipo 1 com uma pista por instrumento, MusicXML com letras, WAV e impressão. Para PDF, escolha **Microsoft Print to PDF** quando disponível no Windows.
 - **Salvar.** O formato `.valescore` armazena a partitura localmente. Ctrl+S salva. Ctrl+Z e Ctrl+Y navegam pelo histórico de edição.
 
-A prévia suporta até 64 compassos, duas vozes rítmicas com acordes e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. Para violão, há tablatura padrão de seis cordas, casas 0–24 e acordes por corda. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
+A prévia suporta até 64 compassos, duas vozes rítmicas com acordes e uma linha de letra por pauta, sustenidos e bemóis, e figuras de semibreve a semicolcheia. Para violão, guitarra e baixo, há tablatura de quatro, cinco ou seis cordas, casas 0–24, acordes por corda, afinações selecionáveis e capo de 0 a 12. A entrada de letra aceita até 24 caracteres por nota. Em compassos excepcionalmente densos o desenho pode abreviar sílabas, com o texto integral disponível na edição e no MusicXML. A distribuição é portátil e sem assinatura digital.
 
 Use **Importar MIDI** ou **Ctrl+I** para criar um projeto editável. A conversão usa semicolcheias, fórmula inicial compatível e andamento inicial, e distribui as notas em até quatro pianos com até duas vozes por pauta. O aplicativo informa ajustes e omissões. O MIDI original fica disponível em **Reprodução → Tocar ou parar MIDI aberto**. O som interno de arquivos MIDI usa um timbre simples, lê andamento e pedal e tem limite de 10 minutos. A saída MIDI do Windows permite usar os timbres do dispositivo selecionado.
 
@@ -36,6 +37,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.26
+
+- **Guitarra e baixo com TAB.** A Central e o painel de instrumentos agora oferecem modelos de guitarra elétrica e baixo elétrico. A pauta mostra a clave adequada, e a TAB adapta automaticamente suas quatro, cinco ou seis linhas.
+- **Afinações e capo.** **Configurar tablatura** reúne escolhas rápidas de afinação e capo. Ao mudar a configuração, as posições de corda/casa preservam sua intenção e atualizam a altura que toca e aparece na pauta.
+- **Intercâmbio musical completo.** O formato nativo conserva instrumento, afinação e capo. MusicXML passa a escrever e ler `staff-lines`, `staff-tuning`, `capo`, corda e casa; MIDI usa programas distintos para violão, guitarra e baixo.
+- A suíte valida Drop D com capo, baixo de cinco cordas, renderização de linhas variáveis, projeto nativo e ida-e-volta MusicXML.
 
 ## Novidades da 0.25
 
@@ -177,5 +185,5 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `16`. Projetos dos esquemas 1 a 15 abrem automaticamente na versão atual. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração, letra opcional e, no violão, corda e casa de tablatura. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+JSON UTF-8, versão de esquema `17`. Projetos dos esquemas 1 a 16 abrem automaticamente na versão atual. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração, letra opcional e, em instrumentos de cordas, corda e casa de tablatura; cada parte TAB guarda também afinação e capo. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
 

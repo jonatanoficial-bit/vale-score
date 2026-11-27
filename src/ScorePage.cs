@@ -124,16 +124,18 @@ namespace ValeScore
                 for (int staff = 0; staff < Music.Parts[part].Staves.Count; staff++, row++)
                 {
                     int top = Engraving.StaffTop(system, row);
-                    bool guitar = GuitarTab.IsGuitar(Music.Parts[part]);
-                    if (y < top - 25 || y >= top + (guitar ? 109 : 85) + (row == lastRow ? 9 : 0)) continue;
+                    var instrument = Music.Parts[part];
+                    bool guitar = GuitarTab.IsTabInstrument(instrument);
+                    int tabBottom = guitar ? 55 + (GuitarTab.StringCount(instrument) - 1) * 8 : 0;
+                    if (y < top - 25 || y >= top + (guitar ? Math.Max(109, tabBottom + 9) : 85) + (row == lastRow ? 9 : 0)) continue;
                     int start = measure.Index * measure.TickCount;
                     int tick = start + measure.Nearest(x);
                     int step = BottomStep(staff) + (int)Math.Round((top + 40 - y) / 5.0);
                     int min = staff == 0 ? 25 : 13;
                     step = Math.Max(min, Math.Min(min + 18, step));
                     var lane = Music.Parts[part].Staves[staff];
-                    int tabString = guitar && y >= top + 51 && y < top + 100
-                        ? Math.Max(1, Math.Min(GuitarTab.Strings, (int)Math.Round((y - (top + 55)) / 8.0) + 1)) : 0;
+                    int tabString = guitar && y >= top + 51 && y < top + tabBottom + 5
+                        ? Math.Max(1, Math.Min(GuitarTab.StringCount(instrument), (int)Math.Round((y - (top + 55)) / 8.0) + 1)) : 0;
                     bool lyricRow = !guitar && y >= top + ScoreLayout.LyricY - 2;
                     var notesInBar = lane.Where(n => n.Tick >= start && n.Tick < start + measure.TickCount).ToArray();
                     bool polyphonic = HasBothVoices(notesInBar);
@@ -151,7 +153,7 @@ namespace ValeScore
                         {
                             var n = notes[i];
                             int noteString, ignoredFret;
-                            if (tabString != 0 && (!GuitarTab.TryPosition(n, out noteString, out ignoredFret) || noteString != tabString)) continue;
+                            if (tabString != 0 && (!GuitarTab.TryPosition(instrument, n, out noteString, out ignoredFret) || noteString != tabString)) continue;
                             float dx = Math.Abs(x - at - (lyricRow ? 0 : offsets[i]));
                             float dy = tabString != 0 ? Math.Abs(y - TabY(top, tabString)) :
                                 Math.Abs(y - (n.IsRest ? RestY(top + RestOffset(n.Voice, polyphonic), n.Length) : NoteY(top, staff, n)));
@@ -260,7 +262,7 @@ namespace ValeScore
                             }
 
                             for (int i = 0; i < 5; i++) g.DrawLine(staffLine, 47, y + 10 * i, endX, y + 10 * i);
-                            DrawClef(g, ink, line, staff, y);
+                            DrawClef(g, ink, line, staff, y, instrument.Instrument == "Baixo");
                             DrawKey(g, ink, score.Fifths, staff, y);
                             if (first == 0)
                             {
@@ -280,7 +282,7 @@ namespace ValeScore
 
                             DrawTies(g, layout, lane, first, after, y, staff, score.BarTicks, ink, accent, laneSelected ? selected : null);
                             DrawSlurs(g, layout, lane, first, after, y, staff, score.BarTicks, ink, accent, laneSelected ? selected : null);
-                            if (guitar) DrawTablature(g, layout, lane, measures, first, after, y, staffLine, ink, accent, laneSelected ? selected : null, small, center);
+                            if (guitar) DrawTablature(g, instrument, layout, lane, measures, first, after, y, staffLine, ink, accent, laneSelected ? selected : null, small, center);
                             else DrawLyrics(g, layout, lane, first, after, y, score.BarTicks, ink, center);
                             foreach (var item in lane.Where(n => n.Tick >= first * score.BarTicks && n.Tick < after * score.BarTicks))
                             {
@@ -455,7 +457,7 @@ namespace ValeScore
             }
         }
 
-        private static void DrawTablature(Graphics g, ScoreLayout layout, List<Note> lane, ScoreLayout.Measure[] measures,
+        private static void DrawTablature(Graphics g, Part instrument, ScoreLayout layout, List<Note> lane, ScoreLayout.Measure[] measures,
             int first, int after, int top, Pen staffLine, Brush ink, Brush accent, StaffPosition selection, Font small, StringFormat center)
         {
             float tabTop = top + 55;
@@ -464,18 +466,19 @@ namespace ValeScore
             using (var fretFont = new Font("Consolas", 9, FontStyle.Bold, GraphicsUnit.Pixel))
             using (var paper = new SolidBrush(Color.FromArgb(253, 250, 243)))
             {
-                for (int stringIndex = 1; stringIndex <= GuitarTab.Strings; stringIndex++)
+                int strings = GuitarTab.StringCount(instrument);
+                for (int stringIndex = 1; stringIndex <= strings; stringIndex++)
                     g.DrawLine(tabLine, measures[0].Left, TabY(top, stringIndex), endX, TabY(top, stringIndex));
                 foreach (var measure in measures)
-                    g.DrawLine(tabLine, measure.Left, tabTop, measure.Left, TabY(top, GuitarTab.Strings));
-                g.DrawLine(tabLine, endX, tabTop, endX, TabY(top, GuitarTab.Strings));
+                    g.DrawLine(tabLine, measure.Left, tabTop, measure.Left, TabY(top, strings));
+                g.DrawLine(tabLine, endX, tabTop, endX, TabY(top, strings));
                 g.DrawString("TAB", small, ink, 50, tabTop + 13);
 
                 int barTicks = measures[0].TickCount;
                 foreach (var note in lane.Where(n => !n.IsRest && n.Tick >= first * barTicks && n.Tick < after * barTicks))
                 {
                     int stringNumber, fret;
-                    if (!GuitarTab.TryPosition(note, out stringNumber, out fret)) continue;
+                    if (!GuitarTab.TryPosition(instrument, note, out stringNumber, out fret)) continue;
                     float x = EventX(layout.MeasureOf(note.Tick / barTicks), note);
                     float y = TabY(top, stringNumber);
                     string text = fret.ToString();
@@ -492,12 +495,12 @@ namespace ValeScore
                 MusicGlyphs.Accidental(g, brush, 91 + 11 * i, y + 40 - KeySignature.StaffPosition(fifths, staff, i) * 5, Math.Sign(fifths));
         }
 
-        private static void DrawClef(Graphics g, Brush brush, Pen pen, int staff, int y)
+        private static void DrawClef(Graphics g, Brush brush, Pen pen, int staff, int y, bool bass)
         {
             using (var path = new GraphicsPath())
             using (var curve = new Pen(pen.Color, 2.3f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
             {
-                if (staff == 1)
+                if (staff == 1 || bass)
                 {
                     path.AddBezier(55, y + 33, 79, y + 22, 81, y - 5, 64, y + 2);
                     path.AddBezier(64, y + 2, 57, y + 4, 57, y + 14, 64, y + 15);

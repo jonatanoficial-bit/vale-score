@@ -41,6 +41,8 @@ namespace ValeScore
     {
         [DataMember] public string Name;
         [DataMember] public string Instrument;
+        [DataMember(EmitDefaultValue = false)] public string TabTuning;
+        [DataMember(EmitDefaultValue = false)] public int Capo;
         [DataMember(EmitDefaultValue = false)] public int? Volume;
         [DataMember(EmitDefaultValue = false)] public bool Muted;
         [DataMember(EmitDefaultValue = false)] public bool Solo;
@@ -83,7 +85,7 @@ namespace ValeScore
             PruneNoteLinks();
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 16;
+        public const int CurrentVersion = 17;
         public const int VoicesPerStaff = 2;
         public const int MaxChordNotes = 8;
         public const int MaxExpressionTextLength = 48;
@@ -112,7 +114,7 @@ namespace ValeScore
             var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty ? n.Voice == 0 : n.Id == id));
             if (note == null || (direction != 1 && direction != -1)) return false;
             int step = note.Step + direction;
-            int min = staff == 0 ? 25 : 13;
+            int min = GuitarTab.IsTabInstrument(Parts[part]) ? 0 : staff == 0 ? 25 : 13;
             if (step < min || step > min + 18) return false;
             int natural = 12 + (step / 7) * 12 + Semitones[step % 7];
             int alter = note.Midi - natural;
@@ -181,7 +183,7 @@ namespace ValeScore
         public void AddPart(string instrument)
         {
             if (Parts.Count >= 4) throw new InvalidOperationException("A prévia suporta até quatro instrumentos.");
-            var part = new Part { Instrument = instrument, Name = instrument, Staves = new List<List<Note>>() };
+            var part = new Part { Instrument = instrument, Name = instrument, TabTuning = GuitarTab.DefaultTuning(instrument), Staves = new List<List<Note>>() };
             int count = Parts.Count(p => p.Instrument == instrument);
             if (count > 0) part.Name += " " + (count + 1);
             part.Staves.Add(new List<Note>());
@@ -196,10 +198,10 @@ namespace ValeScore
 
         public Note PutTab(int part, int staff, int tick, int length, int stringNumber, int fret, int voice = 0)
         {
-            if (part < 0 || part >= Parts.Count || staff != 0 || !GuitarTab.IsGuitar(Parts[part]))
-                throw new InvalidOperationException("A tablatura está disponível na pauta de Violão.");
+            if (part < 0 || part >= Parts.Count || staff != 0 || !GuitarTab.IsTabInstrument(Parts[part]))
+                throw new InvalidOperationException("A tablatura está disponível para violão, guitarra e baixo.");
             int midi, step, alter;
-            if (!GuitarTab.TryPitch(stringNumber, fret, out midi) || !GuitarTab.TrySpell(this, midi, out step, out alter))
+            if (!GuitarTab.TryPitch(Parts[part], stringNumber, fret, out midi) || !GuitarTab.TrySpell(this, midi, out step, out alter))
                 throw new InvalidOperationException("Essa casa não cabe na extensão de tablatura suportada.");
             var lane = Parts[part].Staves[staff];
             var onset = lane.Where(note => note.Tick == tick && note.Voice == voice).ToArray();
@@ -228,6 +230,42 @@ namespace ValeScore
             added.TabString = stringNumber;
             added.TabFret = fret;
             return added;
+        }
+
+        public void ConfigureTablature(int partIndex, string tuning, int capo)
+        {
+            if (partIndex < 0 || partIndex >= Parts.Count || !GuitarTab.IsTabInstrument(Parts[partIndex]))
+                throw new InvalidOperationException("Selecione um instrumento de cordas com tablatura.");
+            var part = Parts[partIndex];
+            string previousTuning = part.TabTuning;
+            int previousCapo = part.Capo;
+            var previousNotes = part.Staves[0].Where(note => !note.IsRest && note.TabString != 0)
+                .Select(note => Tuple.Create(note, note.Step, note.Alter)).ToArray();
+            if (!GuitarTab.TrySetTuning(part, tuning, capo))
+                throw new InvalidOperationException("Essa afinação ou capo não é suportado.");
+            try
+            {
+                foreach (var note in part.Staves[0].Where(note => !note.IsRest && note.TabString != 0))
+                {
+                    int midi, step, alter;
+                    if (!GuitarTab.TryPitch(part, note.TabString, note.TabFret, out midi) || !GuitarTab.TrySpell(this, midi, out step, out alter))
+                        throw new InvalidOperationException("A afinação leva uma posição além da extensão suportada.");
+                    note.Step = step;
+                    note.Alter = alter;
+                }
+                PruneStaffLinks(part.Staves[0]);
+            }
+            catch
+            {
+                part.TabTuning = previousTuning;
+                part.Capo = previousCapo;
+                foreach (var previous in previousNotes)
+                {
+                    previous.Item1.Step = previous.Item2;
+                    previous.Item1.Alter = previous.Item3;
+                }
+                throw;
+            }
         }
 
         public void PutRest(int part, int staff, int tick, int length, int voice = 0)
@@ -463,7 +501,7 @@ namespace ValeScore
                 (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation)) ||
                 !ValidDisplayText(n.ExpressionText, MaxExpressionTextLength) ||
                 (n.PauseMark != null && !PauseMarks.Names.Contains(n.PauseMark))) return false;
-            return (n.TabString == 0 ? n.TabFret == 0 : GuitarTab.ValidPosition(n.TabString, n.TabFret)) &&
+            return (n.TabString == 0 ? n.TabFret == 0 : n.TabString >= 1 && n.TabFret >= 0 && n.TabFret <= GuitarTab.MaxFret) &&
                 n.Step >= 0 && n.Step <= 69 && n.Alter >= -2 && n.Alter <= 2 && n.Midi >= 0 && n.Midi <= 127;
         }
 
@@ -556,7 +594,7 @@ namespace ValeScore
                             alter = tone - Semitones[degree];
                         }
                     }
-                    int min = staff == 0 ? 25 : 13;
+                    int min = GuitarTab.IsTabInstrument(Parts[p]) ? 0 : staff == 0 ? 25 : 13;
                     if (step < min || step > min + 18)
                         throw new InvalidOperationException("Uma nota sairia da extensão editável da pauta. Escolha um intervalo menor.");
                     ChordSymbol chord;
@@ -772,9 +810,10 @@ namespace ValeScore
             foreach (var p in Parts)
             {
                 if (p == null || p.Pan < -100 || p.Pan > 100 || (p.Volume.HasValue && (p.Volume.Value < 0 || p.Volume.Value > 100)) || string.IsNullOrWhiteSpace(p.Name) || p.Name.Length > 40 ||
-                    (p.Instrument != "Piano" && p.Instrument != "Violão" && p.Instrument != "Voz") ||
+                    (p.Instrument != "Piano" && p.Instrument != "Violão" && p.Instrument != "Guitarra" && p.Instrument != "Baixo" && p.Instrument != "Voz") ||
                     p.Staves == null || p.Staves.Count != (p.Instrument == "Piano" ? 2 : 1))
                     throw new InvalidDataException("Instrumento ou configuração de pautas inválida.");
+                if (!GuitarTab.IsValidSetup(p)) throw new InvalidDataException("Afinação ou capo inválido.");
                 foreach (var lane in p.Staves)
                 {
                     if (lane == null || lane.Count > Bars * BarTicks * MaxChordNotes * VoicesPerStaff)
@@ -787,8 +826,13 @@ namespace ValeScore
                             throw new InvalidDataException("Nota ou ritmo inválido no projeto.");
                         lastTick = n.Tick;
                     }
-                    if (p.Instrument != "Violão" && lane.Any(n => n.TabString != 0))
-                        throw new InvalidDataException("Tablatura só é válida para Violão.");
+                    if (!GuitarTab.IsTabInstrument(p) && lane.Any(n => n.TabString != 0))
+                        throw new InvalidDataException("Tablatura só é válida para instrumentos de cordas.");
+                    if (GuitarTab.IsTabInstrument(p) && lane.Where(n => n.TabString != 0).Any(n =>
+                    {
+                        int pitch;
+                        return !GuitarTab.TryPitch(p, n.TabString, n.TabFret, out pitch) || pitch != n.Midi;
+                    })) throw new InvalidDataException("A posição de tablatura não corresponde à altura da nota.");
                     if (lane.Any(n => n.TiedTo.HasValue))
                     {
                         var notes = lane.ToDictionary(n => n.Id);
@@ -859,6 +903,7 @@ namespace ValeScore
                     {
                         if (score.Version < 7) { score.Beats = 4; score.BeatType = 4; }
                         if (score.RehearsalMarks == null) score.RehearsalMarks = new List<RehearsalMark>();
+                        foreach (var part in score.Parts) GuitarTab.Normalize(part);
                         score.Version = CurrentVersion;
                     }
                     score.Validate();
