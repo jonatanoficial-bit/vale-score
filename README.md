@@ -1,10 +1,10 @@
 # Vale Score
 
-**0.26.0 · Prévia para Windows x64**
+**0.27.0 · Prévia para Windows x64**
 
 O [inventário obrigatório da versão final](REQUISITOS-FINAIS.md) reúne os critérios de aceite do produto e o estado de cada recurso.
 
-[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.26.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.26.0-win-x64.zip.sha256)
+[Baixar a versão portátil](https://github.com/jonatanoficial-bit/vale-score/raw/refs/heads/main/downloads/ValeScore-0.27.0-win-x64.zip) · [SHA-256](https://github.com/jonatanoficial-bit/vale-score/blob/main/downloads/ValeScore-0.27.0-win-x64.zip.sha256)
 
 Editor de partituras desktop em português, com projetos locais e funcionamento offline. Extraia o ZIP e abra `ValeScore.exe`. Na Central de projetos, abra um exemplo, escolha um modelo ou carregue seu projeto.
 
@@ -19,6 +19,7 @@ Editor de partituras desktop em português, com projetos locais e funcionamento 
 - **Instrumentar.** Adicione até quatro instrumentos. Piano usa pautas de sol e fá; violão e guitarra usam clave de sol; baixo usa clave de fá. Há modelos diretos de guitarra elétrica e baixo elétrico.
 - **Escrever tablatura.** Selecione uma pauta de **Violão**, **Guitarra** ou **Baixo** e escolha **Tab** (**T**). Defina a corda e a casa, clique na linha da tablatura ou pressione **Enter**. As teclas **0–9** trocam rapidamente a casa; acordes são formados escrevendo outras cordas na mesma posição. A altura correspondente é criada na pauta e toca normalmente.
 - **Configurar cordas.** Em um instrumento com TAB, use **Configurar tablatura** na lateral para escolher a afinação e o capo. Violão traz padrão e Drop D; guitarra inclui padrão, Drop D, Ré padrão e aberta em Sol; baixo inclui padrão, Drop D e Si grave de cinco cordas.
+- **Aplicar técnica.** Selecione uma nota da TAB e use **Técnica de corda**. Bend, slide, hammer-on, pull-off, harmônico natural, palm mute, let ring e vibrato recebem sinais próprios na partitura e permanecem no projeto e no MusicXML.
 - **Ouvir.** Use **Tocar** ou **Espaço** para a partitura. **Abrir MIDI** carrega e toca um arquivo MIDI tipo 0 ou 1. Em **Reprodução**, é possível repetir o MIDI carregado. Selecione **Som interno** ou uma saída MIDI do Windows no transporte.
 - **Escrever com teclado MIDI.** Em **Reprodução → Teclado MIDI**, selecione a entrada e escolha uma figura. No modo **Notas**, cada tecla insere uma nota e avança. No modo **Acordes**, as teclas acumularão notas na posição atual até você avançar.
 - **Exportar.** O botão **Exportar** oferece MIDI tipo 1 com uma pista por instrumento, MusicXML com letras, WAV e impressão. Para PDF, escolha **Microsoft Print to PDF** quando disponível no Windows.
@@ -37,6 +38,13 @@ No PowerShell em Windows x64 com .NET Framework 4.x:
 ```
 
 O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de projetos anteriores, a edição na janela, a entrada de sílabas, o espaçamento e as exportações. Consulte [a decisão técnica](ADR.md) para o escopo da prévia.
+
+## Novidades da 0.27
+
+- **Técnicas de corda visuais.** A seleção de TAB ganhou bend, slide ascendente/descendente, hammer-on, pull-off, harmônico natural, palm mute, let ring e vibrato. Cada técnica tem um desenho reconhecível junto à posição na tablatura.
+- **Fluxo objetivo.** Selecione a nota e use **Técnica de corda** na lateral ou em **Editar**. A lista explica cada escolha e inclui **Sem técnica** para limpar a marca.
+- **Partitura que troca dados.** O projeto, duplicação/cópia de compasso e MusicXML preservam todas as técnicas. Bends, harmônicos, hammer-ons, pull-offs e slides também usam elementos técnicos estruturados no MusicXML.
+- A suíte valida persistência, cópia, ida-e-volta MusicXML e a diferença visual das técnicas desenhadas na página.
 
 ## Novidades da 0.26
 
@@ -185,5 +193,5 @@ O executável sai em `dist\ValeScore.exe`. A suíte exercita a abertura de proje
 
 ## Formato de projeto
 
-JSON UTF-8, versão de esquema `17`. Projetos dos esquemas 1 a 16 abrem automaticamente na versão atual. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração, letra opcional e, em instrumentos de cordas, corda e casa de tablatura; cada parte TAB guarda também afinação e capo. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
+JSON UTF-8, versão de esquema `18`. Projetos dos esquemas 1 a 17 abrem automaticamente na versão atual. Cada instrumento tem uma ou duas pautas, com eventos de ID estável e posição e duração em semicolcheias. Notas contêm altura, alteração, letra opcional e, em instrumentos de cordas, corda, casa e técnica de tablatura; cada parte TAB guarda também afinação e capo. Pausas explícitas conservam a duração escolhida e intervalos vazios geram pausas automaticamente.
 

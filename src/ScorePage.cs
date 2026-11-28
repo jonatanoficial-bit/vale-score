@@ -485,6 +485,52 @@ namespace ValeScore
                     SizeF size = g.MeasureString(text, fretFont);
                     g.FillRectangle(paper, x - size.Width / 2 - 1, y - size.Height / 2 - 1, size.Width + 2, size.Height + 2);
                     g.DrawString(text, fretFont, IsSelected(note, selection) ? accent : ink, new PointF(x, y - size.Height / 2), center);
+                    if (note.StringTechnique != null) DrawStringTechnique(g, note.StringTechnique, x, y, size, small, ink, accent, IsSelected(note, selection), center);
+                }
+            }
+        }
+
+        private static void DrawStringTechnique(Graphics g, string technique, float x, float y, SizeF size, Font small, Brush ink, Brush accent,
+            bool selected, StringFormat center)
+        {
+            Brush color = selected ? accent : ink;
+            using (var pen = new Pen(Color.FromArgb(35, 51, 70), 1.05f) { StartCap = LineCap.Round, EndCap = LineCap.Round })
+            {
+                switch (technique)
+                {
+                    case "bend":
+                        g.DrawLine(pen, x + size.Width / 2 + 3, y - 2, x + 18, y - 20);
+                        g.DrawLine(pen, x + 18, y - 20, x + 13, y - 18);
+                        g.DrawLine(pen, x + 18, y - 20, x + 17, y - 14);
+                        g.DrawString("B", small, color, new PointF(x + 20, y - 28), center);
+                        break;
+                    case "slide-up":
+                        g.DrawLine(pen, x + size.Width / 2 + 3, y + 4, x + 19, y - 9);
+                        break;
+                    case "slide-down":
+                        g.DrawLine(pen, x + size.Width / 2 + 3, y - 4, x + 19, y + 9);
+                        break;
+                    case "hammer-on":
+                    case "pull-off":
+                        g.DrawArc(pen, x + 3, y - 19, 19, 12, 190, 160);
+                        g.DrawString(GuitarTechniques.Abbreviation(technique), small, color, new PointF(x + 14, y - 29), center);
+                        break;
+                    case "natural-harmonic":
+                        PointF[] diamond = { new PointF(x, y - 10), new PointF(x + 9, y), new PointF(x, y + 10), new PointF(x - 9, y) };
+                        g.DrawPolygon(pen, diamond);
+                        break;
+                    case "palm-mute":
+                        pen.DashStyle = DashStyle.Dash;
+                        g.DrawLine(pen, x - 6, y - 15, x + 22, y - 15);
+                        g.DrawString("P.M.", small, color, new PointF(x + 10, y - 26), center);
+                        break;
+                    case "let-ring":
+                        g.DrawString("let ring", small, color, new PointF(x + 11, y - 26), center);
+                        break;
+                    case "vibrato":
+                        for (int i = 0; i < 4; i++)
+                            g.DrawArc(pen, x - 4 + i * 6, y - 18, 7, 7, i % 2 == 0 ? 180 : 0, 180);
+                        break;
                 }
             }
         }

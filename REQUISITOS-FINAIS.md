@@ -16,7 +16,7 @@ Estados da matriz
 
 As exigências anteriores da Bíblia Mestra do Vale Score continuam aplicáveis ao produto.
 
-Base da matriz: prévia 0.26.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio, sinais de pausa e tablatura de violão, guitarra e baixo. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
+Base da matriz: prévia 0.27.0. A [suíte automatizada](tests/Smoke.cs) verifica, entre outros fluxos, a leitura de MIDI tipos 0 e 1, a exportação MIDI, a geração de sinal de áudio, a edição de notas, pausas, textos expressivos, marcas de ensaio, sinais de pausa, tablatura e técnicas de corda. Os testes em hardware MIDI, a compatibilidade entre editores e a validação comercial precisam de evidências próprias.
 
 ## 01 · Estrutura de projetos e organização
 
@@ -131,7 +131,7 @@ Base da matriz: prévia 0.26.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 07.03 | Pedais e indicações de dedilhado para teclado | Pendente | |
 | 07.04 | Violão, guitarra e baixo com tablatura | Parcial | Violão, guitarra e baixo: entrada por corda/casa, acordes, pauta+TAB, reprodução, projeto e MusicXML. Baixo cobre quatro e cinco cordas; técnicas de cordas seguem pendentes. [Suíte Windows](tests/Smoke.cs). |
 | 07.05 | Afinações alternativas, capotraste e diagramas de acordes | Parcial | Afinações padrão, Drop D, Ré padrão, aberta em Sol e Si grave, mais capo 0–12, preservados no projeto e MusicXML. Diagramas de acordes seguem pendentes. [Suíte Windows](tests/Smoke.cs). |
-| 07.06 | Harmônicos, bends, slides e técnicas de cordas | Pendente | |
+| 07.06 | Harmônicos, bends, slides e técnicas de cordas | Parcial | Bend, slides, hammer-on, pull-off, harmônico natural, palm mute, let ring e vibrato: seleção, desenho, projeto, cópia e MusicXML. Reprodução expressiva específica por técnica segue pendente. [Suíte Windows](tests/Smoke.cs). |
 | 07.07 | Divisi de cordas orquestrais | Pendente | |
 | 07.08 | Indicações de arco e técnicas estendidas | Pendente | |
 | 07.09 | Notação de bateria e percussão sem altura definida | Pendente | |
@@ -264,7 +264,7 @@ Base da matriz: prévia 0.26.0. A [suíte automatizada](tests/Smoke.cs) verifica
 | 14.09 | Sincronização com vídeo, timecode e hit points | Pendente | |
 | 14.10 | Exportação de vídeo de partitura em alguns produtos | Pendente | |
 | 14.11 | Bibliotecas de modelos e plugins da comunidade | Pendente | |
-| 14.12 | Recursos para tablatura e notação alternativa | Parcial | Tablatura editável e renderizada para violão, guitarra e baixo, com linhas variáveis, afinação/capo e MusicXML. Demais notações alternativas seguem pendentes. [Suíte Windows](tests/Smoke.cs). |
+| 14.12 | Recursos para tablatura e notação alternativa | Parcial | Tablatura editável e renderizada para violão, guitarra e baixo, com linhas variáveis, afinação/capo, técnicas de corda e MusicXML. Demais notações alternativas seguem pendentes. [Suíte Windows](tests/Smoke.cs). |
 | 14.13 | Suporte a múltiplos sistemas operacionais | Pendente | |
 
 ## 15 · Exigências recomendadas para o Vale Score

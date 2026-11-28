@@ -18,6 +18,7 @@ namespace ValeScore
         [DataMember] public int Alter;
         [DataMember(EmitDefaultValue = false)] public int TabString;
         [DataMember(EmitDefaultValue = false)] public int TabFret;
+        [DataMember(EmitDefaultValue = false)] public string StringTechnique;
         [DataMember(EmitDefaultValue = false)] public bool Courtesy;
         [DataMember(EmitDefaultValue = false)] public string Lyric;
         [DataMember(EmitDefaultValue = false)] public bool HyphenAfter;
@@ -85,7 +86,7 @@ namespace ValeScore
             PruneNoteLinks();
         }
         public const int MaxBars = 64;
-        public const int CurrentVersion = 17;
+        public const int CurrentVersion = 18;
         public const int VoicesPerStaff = 2;
         public const int MaxChordNotes = 8;
         public const int MaxExpressionTextLength = 48;
@@ -306,7 +307,7 @@ namespace ValeScore
             int previousMidi = note.Midi;
             note.Step = step;
             note.Alter = alter;
-            if (note.Midi != previousMidi) { note.TabString = 0; note.TabFret = 0; }
+            if (note.Midi != previousMidi) { note.TabString = 0; note.TabFret = 0; note.StringTechnique = null; }
             foreach (var member in cluster) member.Length = length;
             PruneStaffLinks(lane);
         }
@@ -341,6 +342,7 @@ namespace ValeScore
                     {
                         note.TabString = previous.TabString;
                         note.TabFret = previous.TabFret;
+                        note.StringTechnique = previous.StringTechnique;
                     }
                 }
                 notes.RemoveAll(n => n.Tick == tick && n.Voice == note.Voice);
@@ -437,6 +439,18 @@ namespace ValeScore
             note.PauseMark = mark;
         }
 
+        public void SetStringTechnique(int part, int staff, int tick, string technique, Guid id = default(Guid))
+        {
+            if (part < 0 || part >= Parts.Count || !GuitarTab.IsTabInstrument(Parts[part]))
+                throw new InvalidOperationException("Técnicas de corda exigem uma pauta de violão, guitarra ou baixo.");
+            var note = Parts[part].Staves[staff].Find(n => n.Tick == tick && !n.IsRest && (id == Guid.Empty ? n.Voice == 0 : n.Id == id));
+            int stringNumber, fret;
+            if (note == null || !GuitarTab.TryPosition(Parts[part], note, out stringNumber, out fret))
+                throw new InvalidOperationException("Selecione uma nota com posição de tablatura.");
+            if (!GuitarTechniques.IsValid(technique)) throw new InvalidOperationException("Técnica de corda inválida.");
+            note.StringTechnique = technique;
+        }
+
         public void SetRehearsalMark(int bar, string text)
         {
             if (bar < 0 || bar >= Bars) throw new ArgumentOutOfRangeException("bar");
@@ -492,7 +506,7 @@ namespace ValeScore
         {
             if (n == null || n.Id == Guid.Empty || n.Tick < 0 || n.Voice < 0 || n.Voice >= VoicesPerStaff ||
                 !IsSupportedDuration(n.Length) || n.Tick % BarTicks + n.Length > BarTicks) return false;
-            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.TabString == 0 && n.TabFret == 0 && n.Lyric == null && !n.HyphenAfter &&
+            if (n.IsRest) return n.Step == 0 && n.Alter == 0 && n.TabString == 0 && n.TabFret == 0 && n.StringTechnique == null && n.Lyric == null && !n.HyphenAfter &&
                 n.Chord == null && n.Dynamic == null && n.Articulation == null && n.ExpressionText == null && n.PauseMark == null &&
                 !n.Courtesy && !n.TiedTo.HasValue && n.SlursTo == null;
             ChordSymbol symbol;
@@ -501,7 +515,8 @@ namespace ValeScore
                 (n.Articulation != null && !Articulations.XmlNames.Contains(n.Articulation)) ||
                 !ValidDisplayText(n.ExpressionText, MaxExpressionTextLength) ||
                 (n.PauseMark != null && !PauseMarks.Names.Contains(n.PauseMark))) return false;
-            return (n.TabString == 0 ? n.TabFret == 0 : n.TabString >= 1 && n.TabFret >= 0 && n.TabFret <= GuitarTab.MaxFret) &&
+            return GuitarTechniques.IsValid(n.StringTechnique) &&
+                (n.TabString == 0 ? n.TabFret == 0 : n.TabString >= 1 && n.TabFret >= 0 && n.TabFret <= GuitarTab.MaxFret) &&
                 n.Step >= 0 && n.Step <= 69 && n.Alter >= -2 && n.Alter <= 2 && n.Midi >= 0 && n.Midi <= 127;
         }
 
@@ -612,6 +627,7 @@ namespace ValeScore
                 change.Item1.Chord = change.Item4;
                 change.Item1.TabString = 0;
                 change.Item1.TabFret = 0;
+                change.Item1.StringTechnique = null;
             }
             PruneNoteLinks();
             return changes.Count;
@@ -643,7 +659,7 @@ namespace ValeScore
             var source = notes.ToArray();
             var copies = source.ToDictionary(n => n.Id, n => new Note
             {
-                Tick = n.Tick + delta, Length = n.Length, Step = n.Step, Alter = n.Alter, TabString = n.TabString, TabFret = n.TabFret, Voice = n.Voice,
+                Tick = n.Tick + delta, Length = n.Length, Step = n.Step, Alter = n.Alter, TabString = n.TabString, TabFret = n.TabFret, StringTechnique = n.StringTechnique, Voice = n.Voice,
                 IsRest = n.IsRest, Lyric = n.Lyric, HyphenAfter = n.HyphenAfter, Chord = n.Chord,
                 Dynamic = n.Dynamic, Articulation = n.Articulation, ExpressionText = n.ExpressionText, PauseMark = n.PauseMark,
                 Courtesy = n.Courtesy, TiedTo = n.TiedTo, SlursTo = n.SlursTo
@@ -828,11 +844,18 @@ namespace ValeScore
                     }
                     if (!GuitarTab.IsTabInstrument(p) && lane.Any(n => n.TabString != 0))
                         throw new InvalidDataException("Tablatura só é válida para instrumentos de cordas.");
+                    if (!GuitarTab.IsTabInstrument(p) && lane.Any(n => n.StringTechnique != null))
+                        throw new InvalidDataException("Técnicas de corda só são válidas para instrumentos de cordas.");
                     if (GuitarTab.IsTabInstrument(p) && lane.Where(n => n.TabString != 0).Any(n =>
                     {
                         int pitch;
                         return !GuitarTab.TryPitch(p, n.TabString, n.TabFret, out pitch) || pitch != n.Midi;
                     })) throw new InvalidDataException("A posição de tablatura não corresponde à altura da nota.");
+                    if (lane.Any(n =>
+                    {
+                        int stringNumber, fret;
+                        return n.StringTechnique != null && !GuitarTab.TryPosition(p, n, out stringNumber, out fret);
+                    })) throw new InvalidDataException("Técnica de corda sem posição de tablatura.");
                     if (lane.Any(n => n.TiedTo.HasValue))
                     {
                         var notes = lane.ToDictionary(n => n.Id);

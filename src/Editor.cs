@@ -10,180 +10,7 @@ using System.Windows.Forms;
 
 namespace ValeScore
 {
-    public sealed class Editor : Form
-    {
-        private static readonly Color Dark = StudioTheme.Night;
-        private static readonly Color PanelColor = StudioTheme.Chrome;
-        private static readonly Color TextColor = StudioTheme.Ivory;
-        private static readonly Color Muted = StudioTheme.Quiet;
-        private static readonly Color Accent = StudioTheme.Gold;
-        private static readonly Color Mint = StudioTheme.Mint;
-        private static readonly string[] Figures = { "Semibreve", "Mínima", "Semínima", "Colcheia", "Semicolcheia" };
-        private static readonly Keys[] PitchKeys = { Keys.A, Keys.S, Keys.D, Keys.F, Keys.G, Keys.H, Keys.J };
-        private enum EditMode { Select, Write, Rest, Erase, Lyrics, Chord, Tab }
-        private readonly ScorePage sheet = new ScorePage();
-        private readonly Panel surface = new ScoreDesk { AutoScroll = true, Dock = DockStyle.Fill };
-        private readonly FlowLayoutPanel tools = new FlowLayoutPanel();
-        private readonly ListBox tracks = new ListBox();
-        private readonly Label pageLabel = new Label(), status = new Label(), selection = new Label(), modeHint = new Label();
-        private readonly Button undoButton, redoButton, playButton, previousButton, nextButton;
-        private readonly Button editLyricButton, eraseNoteButton, tabSetupButton;
-        private readonly Label documentTitle = new Label(), documentInfo = new Label();
-        private readonly Label playbackLabel = new Label();
-        private readonly TransportRail transportRail = new TransportRail();
-        private readonly ComboBox midiOutput = new ComboBox();
-        private readonly ToolStripMenuItem metronome = new ToolStripMenuItem("Metrônomo da partitura") { CheckOnClick = true };
-        private readonly ToolStripMenuItem followPlayback = new ToolStripMenuItem("Acompanhar cursor na partitura")
-            { CheckOnClick = true, Checked = true };
-        private readonly ToolStripMenuItem inputMenu = new ToolStripMenuItem("Teclado MIDI");
-        private readonly ContextMenuStrip exportMenu = new ContextMenuStrip();
-        private readonly List<Button> durationButtons = new List<Button>();
-        private readonly List<Button> restButtons = new List<Button>();
-        private readonly List<Button> accidentalButtons = new List<Button>();
-        private readonly Button dotButton, doubleDotButton, tieButton, slurButton;
-        private readonly Dictionary<EditMode, Button> modeButtons = new Dictionary<EditMode, Button>();
-        private readonly ToolTip figureTips = new ToolTip();
-        private readonly ComboBox zoom = new ComboBox();
-        private readonly ComboBox tabStringPicker = new ComboBox();
-        private readonly NumericUpDown tabFretPicker = new NumericUpDown();
-        private readonly LyricEntry lyricEntry = new LyricEntry();
-        private readonly Stack<byte[]> undo = new Stack<byte[]>(), redo = new Stack<byte[]>();
-        private readonly Timer timer = new Timer { Interval = 33 };
-        private readonly Timer recoveryTimer = new Timer { Interval = 12000 };
-        private readonly Recovery recovery;
-        private readonly RecentProjects recentProjects;
-        private readonly StartScreen home;
-        private readonly Control[] workspace;
-        private Control[] focusChrome;
-        private Button focusButton;
-        private FormBorderStyle borderBeforeFocus;
-        private FormWindowState stateBeforeFocus;
-        private bool atHome, hasDocument, focusMode;
-        private byte[] recoverySnapshot;
-        private Score copiedBar;
-        private readonly Stopwatch clock = new Stopwatch();
-        private MemoryStream playback;
-        private SoundPlayer player;
-        private int playbackGeneration;
-        private int inputGeneration;
-        private MidiDevices.Input midiInput;
-        private System.Threading.CancellationTokenSource midiCancellation;
-        private System.Threading.Tasks.Task midiPlaybackTask;
-        private MidiSequence loadedMidi;
-        private string midiName;
-        private bool playingMidiFile;
-        private double playbackLength;
-        private PlaybackRange activeRange;
-        private readonly StaffPosition playbackCursor = new StaffPosition();
-        private readonly ComboBox speedControl = new ComboBox();
-        private static readonly double[] PlaybackSpeeds = { .5, .75, 1, 1.25, 1.5 };
-        private bool preparing, syncingTracks, editingLyric;
-        private EditMode mode = EditMode.Select;
-        private Score score = Score.New(false);
-        private string path;
-        private byte[] saved;
-        private int duration = 4;
-        private int? inputAlter;
-        private Button voiceButton;
-        private StaffPosition slurAnchor;
-        private StaffPosition position = new StaffPosition { Step = 28 };
-        private readonly List<StaffPosition> lanes = new List<StaffPosition>();
-        private readonly List<QuickChoice> commands = new List<QuickChoice>();
-
-        public Editor() : this(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "ValeScore"))
-        {
-        }
-
-        internal Editor(string profileFolder)
-        {
-            recovery = new Recovery(Path.Combine(profileFolder, "Recuperacao"));
-            recentProjects = new RecentProjects(profileFolder);
-            Text = "Vale Score";
-            StartPosition = FormStartPosition.CenterScreen;
-            var desktop = Screen.FromPoint(Cursor.Position).WorkingArea;
-            Size = new Size(Math.Min(1230, desktop.Width), Math.Min(860, desktop.Height));
-            MinimumSize = new Size(880, 610);
-            BackColor = Dark;
-            Font = new Font("Segoe UI", 10);
-            KeyPreview = true;
-            AutoScaleMode = AutoScaleMode.Dpi;
-
-            var menu = new MenuStrip { Dock = DockStyle.Top, BackColor = Dark, ForeColor = TextColor, Font = Font, Renderer = new DarkMenu() };
-            var file = new ToolStripMenuItem("Arquivo");
-            Item(file, "Central de projetos", Keys.Control | Keys.Shift | Keys.H, ShowHome);
-            Item(file, "Nova partitura a partir de modelo…", Keys.Control | Keys.N, NewFromTemplate);
-            Item(file, "Abrir…", Keys.Control | Keys.O, Open);
-            Item(file, "Recuperar projeto…", Keys.None, Recover);
-            Item(file, "Abrir MIDI para ouvir…", Keys.None, OpenMidi);
-            Item(file, "Importar MIDI como partitura…", Keys.Control | Keys.I, ImportMidiScore);
-            Item(file, "Importar MusicXML ou MXL…", Keys.None, ImportMusicXml);
-            Item(file, "Salvar", Keys.Control | Keys.S, () => Save(false));
-            Item(file, "Salvar como…", Keys.Control | Keys.Shift | Keys.S, () => Save(true));
-            file.DropDownItems.Add(new ToolStripSeparator());
-            Item(file, "Exportar MIDI…", Keys.None, ExportMidi);
-            Item(file, "Exportar MusicXML…", Keys.None, ExportMusicXml);
-            Item(file, "Exportar MusicXML compactado…", Keys.None, ExportMxl);
-            Item(file, "Exportar WAV…", Keys.None, ExportWave);
-            Item(file, "Exportar página como PNG…", Keys.None, ExportPng);
-            Item(file, "Imprimir / PDF…", Keys.Control | Keys.P, Print);
-            Item(file, "Abrir partitura de exemplo", Keys.None, () => New(true));
-            var edit = new ToolStripMenuItem("Editar");
-            Item(edit, "Desfazer", Keys.Control | Keys.Z, () => History(undo, redo));
-            Item(edit, "Refazer", Keys.Control | Keys.Y, () => History(redo, undo));
-            Item(edit, "Alternar voz da pauta", Keys.None, ToggleVoice).ShortcutKeyDisplayString = "Shift+V";
-            Item(edit, "Ligadura de expressão", Keys.None, SetSlurEndpoint).ShortcutKeyDisplayString = "Shift+S";
-            Item(edit, "Ligadura de prolongamento", Keys.None, ToggleTie).ShortcutKeyDisplayString = "Shift+T";
-            Item(edit, "Escrever acorde", Keys.None, () => SetMode(EditMode.Chord)).ShortcutKeyDisplayString = "K";
-            Item(edit, "Editar letra da nota", Keys.None, StartLyrics).ShortcutKeyDisplayString = "Shift+L";
-            Item(edit, "Remover letra da nota", Keys.None, RemoveLyric);
-            Item(edit, "Expressões e sinais da nota…", Keys.Control | Keys.H, EditExpression);
-            Item(edit, "Marca de ensaio do compasso…", Keys.None, EditRehearsalMark);
-            var articulationMenu = new ToolStripMenuItem("Articulação da nota") { ForeColor = TextColor };
-            for (int i = 0; i < Articulations.Names.Length; i++)
-            {
-                string mark = Articulations.XmlNames[i];
-                Item(articulationMenu, Articulations.Names[i], Keys.None, () => ChangeArticulation(mark));
-            }
-            Item(articulationMenu, "Remover articulação", Keys.None, () => ChangeArticulation(null));
-            edit.DropDownItems.Add(articulationMenu);
-            var pauseMenu = new ToolStripMenuItem("Sinal de pausa da nota") { ForeColor = TextColor };
-            Item(pauseMenu, "Fermata", Keys.None, () => ChangePauseMark("fermata"));
-            Item(pauseMenu, "Respiração", Keys.None, () => ChangePauseMark("breath-mark"));
-            Item(pauseMenu, "Cesura", Keys.None, () => ChangePauseMark("caesura"));
-            Item(pauseMenu, "Remover sinal de pausa", Keys.None, () => ChangePauseMark(null));
-            edit.DropDownItems.Add(pauseMenu);
-            Item(edit, "Propriedades da partitura…", Keys.None, Properties);
-            Item(edit, "Renomear instrumento selecionado…", Keys.None, RenameSelectedPart);
-            Item(edit, "Fórmula de compasso…", Keys.None, EditMeter);
-            Item(edit, "Armadura de clave…", Keys.None, EditKey);
-            var spelling = new ToolStripMenuItem("Grafia e acidentes") { ForeColor = TextColor };
-            Item(spelling, "Acidente automático", Keys.None, () => { inputAlter = null; ShowDuration(); Report("Entrada segue a armadura e o compasso."); });
-            Item(spelling, "Dobrado bemol", Keys.None, () => ChooseAccidental(-2));
-            Item(spelling, "Dobrado sustenido", Keys.None, () => ChooseAccidental(2));
-            Item(spelling, "Alternar acidente de cortesia", Keys.None, ToggleCourtesy);
-            Item(spelling, "Enarmonia: grau anterior", Keys.None, () => Respell(-1));
-            Item(spelling, "Enarmonia: próximo grau", Keys.None, () => Respell(1));
-            edit.DropDownItems.Add(spelling);
-            Item(edit, "Adicionar compasso", Keys.None, AddBar);
-            Item(edit, "Duplicar compasso atual", Keys.Control | Keys.D, DuplicateCurrentBar);
-            Item(edit, "Copiar compasso atual", Keys.Control | Keys.Shift | Keys.C, CopyCurrentBar);
-            Item(edit, "Colar no compasso atual", Keys.Control | Keys.Shift | Keys.V, PasteCurrentBar);
-            Item(edit, "Inserir compasso antes do atual", Keys.None, InsertCurrentBar);
-            Item(edit, "Remover compasso atual…", Keys.None, RemoveCurrentBar);
-            Item(edit, "Ir para compasso…", Keys.Control | Keys.G, GoToBar);
-            Item(edit, "Transpor…", Keys.Control | Keys.T, TransposeRange);
-            Item(edit, "Buscar comandos…", Keys.Control | Keys.K, FindCommand);
-            var help = new ToolStripMenuItem("Ajuda");
-            Item(help, "Atalhos de edição", Keys.F1, () => MessageBox.Show(this,
-                "V seleciona, N escreve notas, R escreve pausas e E apaga. Esc volta à seleção.\n" +
-                "Na pauta, use ← / → para navegar e ↑ / ↓ para mudar a altura.\n" +
-                "No modo Notas, A S D F G H J inserem Dó a Si. Enter insere a altura do cursor.\n" +
-                "K abre Acordes. Shift+V alterna a voz da pauta. Alt+↓ percorre as notas do acorde na seleção.\n" +
-                "Em violão, guitarra ou baixo, T abre Tab: escolha corda e casa, clique na tablatura ou pressione Enter. 0–9 muda a casa.\n" +
-                "1 a 5 escolhem a figura da ferramenta ativa. Delete apaga a figura selecionada.\n" +
-                "Shift+T liga à próxima nota de mesma altura e voz. Repita para remover.\n" +
-                "Shift+S marca o início da frase. Clique na última nota ou selecione-a pelo teclado e pressione Shift+S.\n" +
-                "Ctrl+H abre expressões, texto técnico e sinais de pausa. A paleta Sinais também inclui fermata, respiração e cesura.\n" +
+    public sealed classl+H abre expressões, texto técnico e sinais de pausa. A paleta Sinais também inclui fermata, respiração e cesura.\n" +
                 "Shift+L abre a letra sob a nota. Espaço avança por palavra e hífen por sílaba.\n" +
                 "Na letra, Enter confirma, Esc cancela e Shift+Tab volta à nota anterior.\n" +
                 "Espaço toca ou para fora da letra. Ctrl+Z desfaz. Ctrl+Y refaz. F11 ativa o modo foco.", "Atalhos do Vale Score"));
@@ -291,6 +118,9 @@ namespace ValeScore
             tabSetupButton = Button("Configurar tablatura", ConfigureTablature);
             tabSetupButton.AccessibleName = "Configurar afinação e capo da tablatura";
             sidebar.Controls.Add(tabSetupButton);
+            stringTechniqueButton = Button("Técnica de corda", EditStringTechnique);
+            stringTechniqueButton.AccessibleName = "Aplicar técnica de corda à nota selecionada";
+            sidebar.Controls.Add(stringTechniqueButton);
             sidebar.Controls.Add(Caption("SELEÇÃO"));
             selection.Width = 176;
             selection.Height = 62;
@@ -1151,6 +981,39 @@ namespace ValeScore
                 Report("Tablatura · " + score.Parts[partIndex].Instrument + " · " + GuitarTab.SetupLabel(score.Parts[partIndex]));
         }
 
+        private void EditStringTechnique()
+        {
+            if (!CommitLyric()) return;
+            if (!IsGuitarTarget()) { Report("Selecione uma pauta de violão, guitarra ou baixo."); return; }
+            var note = SelectedNote();
+            int stringNumber, fret;
+            if (note == null || !GuitarTab.TryPosition(score.Parts[position.Part], note, out stringNumber, out fret))
+            {
+                Report("Selecione uma nota escrita na tablatura.");
+                return;
+            }
+            int part = position.Part, staff = position.Staff, tick = position.Tick;
+            Guid id = note.Id;
+            var choices = new List<QuickChoice> {
+                new QuickChoice("Sem técnica", "Remove a técnica da nota selecionada", () => ApplyStringTechnique(part, staff, tick, id, null))
+            };
+            foreach (var technique in GuitarTechniques.Names)
+            {
+                string selectedTechnique = technique;
+                choices.Add(new QuickChoice(GuitarTechniques.Label(technique),
+                    note.StringTechnique == technique ? "Ativa nesta nota" : "Aplicar à nota selecionada",
+                    () => ApplyStringTechnique(part, staff, tick, id, selectedTechnique)));
+            }
+            using (var dialog = new QuickPicker("Técnica de corda", "Escolha a técnica para a nota", choices, "Aplicar"))
+                if (dialog.ShowDialog(this) == DialogResult.OK) dialog.Choice.Run();
+        }
+
+        private void ApplyStringTechnique(int part, int staff, int tick, Guid id, string technique)
+        {
+            if (Change(() => score.SetStringTechnique(part, staff, tick, technique, id)))
+                Report(technique == null ? "Técnica de corda removida" : "Técnica · " + GuitarTechniques.Label(technique));
+        }
+
         private void RefreshTabStrings()
         {
             if (!IsGuitarTarget()) return;
@@ -1273,6 +1136,7 @@ namespace ValeScore
             modeButtons[EditMode.Tab].Enabled = guitarTarget;
             tabSetupButton.Visible = guitarTarget;
             tabSetupButton.Enabled = guitarTarget;
+            stringTechniqueButton.Visible = guitarTarget;
             if (guitarTarget) RefreshTabStrings();
             tabStringPicker.Visible = tabFretPicker.Visible = mode == EditMode.Tab && guitarTarget;
             sheet.Selection = position;
@@ -1307,10 +1171,13 @@ namespace ValeScore
                 + (selected == null ? "  ·  Cursor" : "  ·  " + Figures[Array.IndexOf(Score.Durations, Score.BaseDuration(selected.Length))]
                     + new string('·', Score.DotCount(selected.Length)))
                 + (note != null && note.Lyric != null ? "\n“" + note.Lyric + "”" : "");
-            int tabString, tabFret;
-            if (note != null && GuitarTab.TryPosition(score.Parts[position.Part], note, out tabString, out tabFret))
+            int tabString = 0, tabFret = 0;
+            bool hasTabPosition = note != null && GuitarTab.TryPosition(score.Parts[position.Part], note, out tabString, out tabFret);
+            if (hasTabPosition)
                 selection.Text += "\nTAB · " + GuitarTab.StringLabel(score.Parts[position.Part], tabString) + " · casa " + tabFret +
                     "\n" + GuitarTab.SetupLabel(score.Parts[position.Part]);
+            if (note != null && note.StringTechnique != null)
+                selection.Text += "\n" + GuitarTechniques.Label(note.StringTechnique);
             bool dirty = Dirty();
             if (!atHome) Text = score.Title + (dirty ? " *" : "") + " — Vale Score";
             documentTitle.Text = score.Title;
@@ -1319,6 +1186,7 @@ namespace ValeScore
             redoButton.Enabled = redo.Count > 0;
             editLyricButton.Enabled = note != null;
             eraseNoteButton.Enabled = selected != null;
+            stringTechniqueButton.Enabled = guitarTarget && hasTabPosition;
             ChangePage(sheet.Engraving.PageOf(position.Tick));
             ShowDuration();
             PlaceLyricEntry();

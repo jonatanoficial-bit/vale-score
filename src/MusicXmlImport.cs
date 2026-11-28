@@ -350,6 +350,12 @@ namespace ValeScore
                             added.TabString = tabString;
                             added.TabFret = tabFret;
                         }
+                        string technique = ReadStringTechnique(child, technical);
+                        if (technique != null)
+                        {
+                            try { result.Project.SetStringTechnique(part, staff, at, technique, added.Id); }
+                            catch (InvalidOperationException) { result.Normalized++; }
+                        }
                         var accidental = child.Element("accidental");
                         if (accidental != null && ((string)accidental.Attribute("cautionary") == "yes" ||
                             (string)accidental.Attribute("parentheses") == "yes"))
@@ -427,6 +433,19 @@ namespace ValeScore
                 if (excess.Start.SlursTo.Count == 0) excess.Start.SlursTo = null;
                 result.Omitted++;
             }
+        }
+
+        private static string ReadStringTechnique(XElement note, XElement technical)
+        {
+            string raw = technical == null ? null : technical.Elements("other-technical").Select(item => item.Value).FirstOrDefault();
+            if (GuitarTechniques.IsValid(raw) && raw != null) return raw;
+            if (technical != null && technical.Element("bend") != null) return "bend";
+            if (technical != null && technical.Elements("harmonic").Elements("natural").Any()) return "natural-harmonic";
+            if (technical != null && technical.Element("hammer-on") != null) return "hammer-on";
+            if (technical != null && technical.Element("pull-off") != null) return "pull-off";
+            var slide = note.Elements("notations").Elements("slide").FirstOrDefault();
+            if (slide != null) return (string)slide.Attribute("line-type") == "dashed" ? "slide-down" : "slide-up";
+            return null;
         }
 
         private static void ReadSlurs(XElement element, Note note, int staff,

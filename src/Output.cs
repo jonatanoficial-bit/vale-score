@@ -510,10 +510,11 @@ namespace ValeScore
             bool fermata = note != null && note.PauseMark == "fermata";
             bool breath = note != null && note.PauseMark == "breath-mark";
             bool caesura = note != null && note.PauseMark == "caesura";
+            string technique = note == null ? null : note.StringTechnique;
             int tabString = 0, tabFret = 0;
             bool tab = note != null && !note.IsRest && GuitarTab.IsTabInstrument(tabPart) && GuitarTab.TryPosition(tabPart, note, out tabString, out tabFret);
             if (tieStart || tieStop || (note != null && (note.Articulation != null || fermata || breath || caesura)) ||
-                (slurStarts != null && slurStarts.Any()) || (slurEnds != null && slurEnds.Any()) || tab)
+                (slurStarts != null && slurStarts.Any()) || (slurEnds != null && slurEnds.Any()) || tab || technique != null)
             {
                 xml.WriteStartElement("notations");
                 if (tieStop) WriteTie(xml, "tied", "stop");
@@ -529,11 +530,41 @@ namespace ValeScore
                     if (caesura) xml.WriteElementString("caesura", "");
                     xml.WriteEndElement();
                 }
-                if (tab)
+                if (technique == "slide-up" || technique == "slide-down")
+                {
+                    xml.WriteStartElement("slide");
+                    xml.WriteAttributeString("type", "start");
+                    xml.WriteAttributeString("line-type", technique == "slide-up" ? "solid" : "dashed");
+                    xml.WriteEndElement();
+                }
+                if (tab || technique != null)
                 {
                     xml.WriteStartElement("technical");
-                    xml.WriteElementString("string", tabString.ToString());
-                    xml.WriteElementString("fret", tabFret.ToString());
+                    if (tab)
+                    {
+                        xml.WriteElementString("string", tabString.ToString());
+                        xml.WriteElementString("fret", tabFret.ToString());
+                    }
+                    if (technique == "bend")
+                    {
+                        xml.WriteStartElement("bend");
+                        xml.WriteElementString("bend-alter", "1");
+                        xml.WriteEndElement();
+                    }
+                    else if (technique == "natural-harmonic")
+                    {
+                        xml.WriteStartElement("harmonic");
+                        xml.WriteElementString("natural", "");
+                        xml.WriteEndElement();
+                    }
+                    else if (technique == "hammer-on" || technique == "pull-off")
+                    {
+                        xml.WriteStartElement(technique);
+                        xml.WriteAttributeString("type", "start");
+                        xml.WriteString(GuitarTechniques.Abbreviation(technique));
+                        xml.WriteEndElement();
+                    }
+                    if (technique != null) xml.WriteElementString("other-technical", technique);
                     xml.WriteEndElement();
                 }
                 xml.WriteEndElement();

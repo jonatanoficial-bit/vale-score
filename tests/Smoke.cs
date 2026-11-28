@@ -282,6 +282,55 @@ internal static class Smoke
             Assert(Enumerable.Range(260, 220).Any(x => image.GetPixel(x, ScoreLayout.FirstStaffTop + 87).R < 150),
                 "Página adapta a quantidade de linhas ao baixo de cinco cordas");
         }
+
+        var techniques = new Score { Title = "Técnicas de guitarra", Author = "Teste" };
+        techniques.AddPart("Guitarra");
+        var bend = techniques.PutTab(0, 0, 0, 4, 1, 3);
+        var slide = techniques.PutTab(0, 0, 4, 4, 2, 5);
+        var harmonic = techniques.PutTab(0, 0, 8, 4, 3, 12);
+        var mute = techniques.PutTab(0, 0, 12, 4, 4, 2);
+        techniques.SetStringTechnique(0, 0, 0, "bend", bend.Id);
+        techniques.SetStringTechnique(0, 0, 4, "slide-down", slide.Id);
+        techniques.SetStringTechnique(0, 0, 8, "natural-harmonic", harmonic.Id);
+        techniques.SetStringTechnique(0, 0, 12, "palm-mute", mute.Id);
+        techniques.Validate();
+        var restoredTechniques = Score.Restore(techniques.Snapshot());
+        Assert(restoredTechniques.Parts[0].Staves[0].Where(note => !note.IsRest).Select(note => note.StringTechnique)
+            .SequenceEqual(new[] { "bend", "slide-down", "natural-harmonic", "palm-mute" }),
+            "Projeto preserva as técnicas de corda da tablatura");
+        techniques.PasteBar(1, techniques.CopyBar(0));
+        Assert(techniques.Parts[0].Staves[0].Where(note => note.Tick >= 16 && !note.IsRest).Select(note => note.StringTechnique)
+            .SequenceEqual(new[] { "bend", "slide-down", "natural-harmonic", "palm-mute" }),
+            "Cópia de compasso conserva as técnicas de corda");
+        using (var xml = new MemoryStream())
+        {
+            Output.MusicXml(restoredTechniques, xml);
+            xml.Position = 0;
+            var document = XDocument.Load(xml);
+            Assert(document.Descendants("other-technical").Select(item => item.Value)
+                .SequenceEqual(new[] { "bend", "slide-down", "natural-harmonic", "palm-mute" }) &&
+                document.Descendants("bend").Any() && document.Descendants("harmonic").Elements("natural").Any() && document.Descendants("slide").Any(),
+                "MusicXML exporta técnicas de corda estruturadas");
+            xml.Position = 0;
+            var importedTechniques = MusicXmlImport.Read(xml, "Técnicas").Project.Parts[0].Staves[0].Where(note => !note.IsRest).ToArray();
+            Assert(importedTechniques.Select(note => note.StringTechnique).SequenceEqual(new[] { "bend", "slide-down", "natural-harmonic", "palm-mute" }),
+                "MusicXML reimporta as técnicas de corda");
+        }
+        var plainTechniques = Score.Restore(restoredTechniques.Snapshot());
+        foreach (var note in plainTechniques.Parts[0].Staves[0]) note.StringTechnique = null;
+        using (var withTechniques = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var withoutTechniques = new Bitmap(ScorePage.PageWidth, ScorePage.PageHeight))
+        using (var withGraphics = Graphics.FromImage(withTechniques))
+        using (var withoutGraphics = Graphics.FromImage(withoutTechniques))
+        {
+            withGraphics.Clear(Color.White);
+            withoutGraphics.Clear(Color.White);
+            ScorePage.Draw(withGraphics, restoredTechniques, 0, null, -1);
+            ScorePage.Draw(withoutGraphics, plainTechniques, 0, null, -1);
+            Assert(Enumerable.Range(120, 300).Any(x => Enumerable.Range(ScoreLayout.FirstStaffTop + 20, 90)
+                .Any(y => withTechniques.GetPixel(x, y) != withoutTechniques.GetPixel(x, y))),
+                "Página desenha sinais gráficos para técnicas de corda");
+        }
     }
 
     private static void VoiceChecks(string directory)
